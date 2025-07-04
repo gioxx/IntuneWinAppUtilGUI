@@ -33,7 +33,16 @@ This tool simplifies the packaging of Win32 apps for Microsoft Intune by providi
 
 ## 🚀 How to Use
 
-### Method 1: Clone or Download
+### Method 1: From PowerShell Gallery (recommended)
+
+Once published, you'll be able to install via:
+
+```powershell
+Install-Module IntuneWinAppUtilGUI -Scope CurrentUser
+Show-IntuneWinAppUtilGui
+```
+
+### Method 2: Clone or Download
 
 1. Clone this repository or download as ZIP and extract (e.g., `C:\IntuneWinAppUtilGUI`)..
 2. In PowerShell, import the module from the extracted folder:
@@ -49,15 +58,6 @@ This tool simplifies the packaging of Win32 apps for Microsoft Intune by providi
     ```
 
 > 💡 Tip: you can add the module path to your `$env:PSModulePath` if you want to make it persist and available system-wide.
-
-### Method 2: From PowerShell Gallery (recommended)
-
-Once published, you'll be able to install via:
-
-```powershell
-Install-Module IntuneWinAppUtilGUI -Scope CurrentUser
-Show-IntuneWinAppUtilGui
-```
 
 ---
 
