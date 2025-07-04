@@ -1,6 +1,6 @@
 @{
     RootModule         = 'IntuneWinAppUtilGUI.psm1'
-    ModuleVersion      = '1.0.0'
+    ModuleVersion      = '1.0.1'
     GUID               = '7db79126-1b57-48d2-970a-4795692dfcfc'
     Author             = 'Giovanni Solone'
     Description        = 'GUI wrapper for IntuneWinAppUtil.exe with config file support and WPF interface.'
@@ -26,7 +26,7 @@
             Icon         = 'icon.png'
             Readme       = 'README.md'
             ReleaseNotes = @'
-- First Version.
+- Fixed - Get-ChildItem: Cannot find path IntuneWinAppUtilGUI\1.0.0\Private because it does not exist.
 '@
         }
     }
