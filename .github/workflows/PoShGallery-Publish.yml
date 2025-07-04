@@ -1,0 +1,80 @@
+name: Publish to PowerShell Gallery
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update version in psd1 and UI.xaml
+        shell: pwsh
+        run: |
+          $tagVersion = '${{ github.ref_name }}' -replace '^v', ''  # es: "v1.0.0" → "1.0.0"
+
+          # Update version in PSD1
+          $psd1Path = Join-Path $PWD 'IntuneWinAppUtilGUI.psd1'
+          (Get-Content $psd1Path) -replace '(?<=ModuleVersion\s*=\s*'')[^'']+', $tagVersion | Set-Content $psd1Path
+
+          # Update version in XAML title
+          $xamlPath = Join-Path $PWD 'UI/UI.xaml'
+          if (Test-Path $xamlPath) {
+              (Get-Content $xamlPath) -replace '(?<=Title\s*=\s*"IntuneWinAppUtil GUI · )[^"]+', $tagVersion | Set-Content $xamlPath
+          }
+
+      - name: Validate module manifest
+        shell: pwsh
+        run: |
+          $psd1Path = Join-Path $PWD 'IntuneWinAppUtilGUI.psd1'
+          Test-ModuleManifest -Path $psd1Path -Verbose
+
+      - name: Prepare module package
+        shell: pwsh
+        run: |
+          $outDir = Join-Path $PWD 'build'
+          $moduleName = 'IntuneWinAppUtilGUI'
+          $moduleDir = Join-Path $outDir $moduleName
+
+          if (Test-Path $outDir) { Remove-Item -Recurse -Force $outDir }
+          New-Item -ItemType Directory -Path $moduleDir -Force | Out-Null
+
+          $includeFiles = @(
+            "$moduleName.psd1",
+            "$moduleName.psm1",
+            "README.md"
+          )
+
+          foreach ($file in $includeFiles) {
+            if (Test-Path $file) {
+              Copy-Item -Path $file -Destination $moduleDir -Force
+            }
+          }
+
+          $foldersToInclude = @("Private", "Public", "Assets", "UI")
+          foreach ($folder in $foldersToInclude) {
+            if (Test-Path $folder) {
+              Copy-Item -Path $folder -Destination $moduleDir -Recurse -Force
+            }
+          }
+
+      - name: Publish module to PowerShell Gallery
+        shell: pwsh
+        run: |
+          $modulePath = Join-Path $PWD 'build' | Join-Path -ChildPath 'IntuneWinAppUtilGUI'
+
+          if (-not (Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue)) {
+              Register-PSRepository -Name 'PSGallery' -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted
+          }
+
+          Publish-Module -Path $modulePath `
+                         -NuGetApiKey "${{ secrets.NUGET_API_KEY }}" `
+                         -Verbose
