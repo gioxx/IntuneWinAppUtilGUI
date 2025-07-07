@@ -1,4 +1,4 @@
-# # Import helper functions if needed
+# # Import helper functions
 # Get-ChildItem -Path "$PSScriptRoot\Private" -Filter *.ps1 | ForEach-Object {
 #     . $_.FullName
 # }
