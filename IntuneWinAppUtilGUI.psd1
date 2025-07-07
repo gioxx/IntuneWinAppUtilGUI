@@ -1,6 +1,6 @@
 @{
     RootModule         = 'IntuneWinAppUtilGUI.psm1'
-    ModuleVersion      = '1.0.1'
+    ModuleVersion      = '1.0.2'
     GUID               = '7db79126-1b57-48d2-970a-4795692dfcfc'
     Author             = 'Giovanni Solone'
     Description        = 'GUI wrapper for IntuneWinAppUtil.exe with config file support and WPF interface.'
@@ -26,7 +26,8 @@
             Icon         = 'icon.png'
             Readme       = 'README.md'
             ReleaseNotes = @'
-- Fixed - Get-ChildItem: Cannot find path IntuneWinAppUtilGUI\1.0.0\Private because it does not exist.
+            - Fixed: Rename-Item -Path $defaultPath -NewName $newName -Force when the file already exists. Now I rename the file using an incremental _$counter (starting from 1).
+            - Fixed: Get-ChildItem: Cannot find path IntuneWinAppUtilGUI\1.0.0\Private because it does not exist.
 '@
         }
     }
