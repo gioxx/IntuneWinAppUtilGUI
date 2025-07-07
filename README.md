@@ -107,6 +107,18 @@ If the path to `IntuneWinAppUtil.exe` is not provided:
 
 ---
 
+## 🐞 Known Issues
+
+### Emoji rendering on Windows 10 (and earlier versions)
+
+The graphical interface makes use of emojis (such as ✅, 🚀, 🔧, etc.) to improve visual feedback and usability.  
+**On Windows 10** (also 8.1 and 7), some emojis might not be displayed correctly due to limited font support in the system’s default rendering engine. You may see missing characters or fallback symbols instead. **On Windows 11**, emoji rendering is fully supported and works as expected.
+
+> [!IMPORTANT]  
+> This is only a cosmetic issue. The script and tool functionality are not affected in any way. Everything will continue to work normally on both Windows 10 and Windows 11.
+
+---
+
 ## 🤝 Contributions
 
 Pull requests and issues are welcome. If you have an improvement idea, feel free to open a discussion or PR!
