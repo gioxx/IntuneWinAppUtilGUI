@@ -169,13 +169,39 @@ function Show-IntuneWinAppUtilGui {
             }
 
             try {
-                Rename-Item -Path $defaultPath -NewName $newName -Force
-                $fullPath = Join-Path $o $newName
-                $resp = [System.Windows.MessageBox]::Show("Package created and renamed to:`n$newName`n`nOpen folder?", "Success", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Information)
-                if ($resp -eq "Yes") { Start-Process explorer.exe "/select,`"$fullPath`"" }
+                $baseName = [System.IO.Path]::GetFileNameWithoutExtension($newName)
+                $ext = [System.IO.Path]::GetExtension($newName)
+                $finalName = $newName
+                $counter = 1
+        
+                while (Test-Path (Join-Path $o $finalName)) {
+                    $finalName = "$baseName" + "_$counter" + "$ext"
+                    $counter++
+                }
+        
+                Rename-Item -Path $defaultPath -NewName $finalName -Force
+                $fullPath = Join-Path $o $finalName
+        
+                $msg = "Package created and renamed to:`n$finalName"
+                if ($finalName -ne $newName) {
+                    $msg += "`n(Note: original name '$newName' already existed.)"
+                }
+                $msg += "`n`nOpen folder?"
+        
+                $resp = [System.Windows.MessageBox]::Show(
+                    $msg,
+                    "Success",
+                    [System.Windows.MessageBoxButton]::YesNo,
+                    [System.Windows.MessageBoxImage]::Information
+                )
+                if ($resp -eq "Yes") {
+                    Start-Process explorer.exe "/select,`"$fullPath`""
+                }
+        
             } catch {
                 [System.Windows.MessageBox]::Show("Renaming failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
             }
+            
         } else {
             [System.Windows.MessageBox]::Show("Output file not found.", "Warning", "OK", "Warning")
         }
