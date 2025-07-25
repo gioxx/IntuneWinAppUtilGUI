@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write # Required to push changes (UI.xaml/psd1) to the repository
 
 jobs:
   publish:
@@ -20,6 +20,7 @@ jobs:
         shell: pwsh
         run: |
           $tagVersion = '${{ github.ref_name }}' -replace '^v', ''  # es: "v1.0.0" → "1.0.0"
+          Set-Content -Path version.txt -Value $tagVersion
 
           # Update version in PSD1
           $psd1Path = Join-Path $PWD 'IntuneWinAppUtilGUI.psd1'
@@ -30,6 +31,17 @@ jobs:
           if (Test-Path $xamlPath) {
               (Get-Content $xamlPath) -replace '(?<=Title\s*=\s*"IntuneWinAppUtil GUI · )[^"]+', $tagVersion | Set-Content $xamlPath
           }
+
+      - name: Commit and push updated version files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          tagVersion=$(cat version.txt)
+          git add IntuneWinAppUtilGUI.psd1 UI/UI.xaml
+          git diff --cached --quiet || git commit -m "Update version to $tagVersion [ci skip]"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_REF#refs/heads/}
 
       - name: Validate module manifest
         shell: pwsh
