@@ -1,5 +1,23 @@
-[CmdletBinding()]
-param ()
+<#
+.SYNOPSIS
+    Downloads and installs the latest version of IntuneWinAppUtil.exe from the official GitHub repository.
+.DESCRIPTION
+    This script downloads the latest master branch ZIP of the Microsoft-Win32-Content-Prep-Tool from GitHub,
+    extracts the IntuneWinAppUtil.exe executable, and copies it to a local folder under %APPDATA%.
+    It also cleans up temporary files created during the process.
+.EXAMPLE
+    .\Test-DownloadIntuneTool.ps1
+.NOTES
+    Requires PowerShell 5.1 or later.
+    Needs internet access to download ZIP files and write permissions to %APPDATA%
+
+    Author: Giovanni Solone
+    Date: 2025-06-20
+    License: MIT
+
+    Modifications history:
+    - 2025-06-20: Initial version.
+#>
 
 function Write-Info($msg) { Write-Host "[INFO] $msg" -ForegroundColor Cyan }
 function Write-Success($msg) { Write-Host "[OK]   $msg" -ForegroundColor Green }
@@ -32,7 +50,7 @@ try {
     $exeSource = Get-ChildItem -Path $extractPath -Recurse -Filter "IntuneWinAppUtil.exe" | Select-Object -First 1
 
     if (-not $exeSource) {
-        Write-ErrorMsg "❌ IntuneWinAppUtil.exe not found in extracted content."
+        Write-ErrorMsg "IntuneWinAppUtil.exe not found in extracted content."
         exit 1
     }
 
@@ -46,7 +64,6 @@ try {
     Copy-Item -Path $exeSource.FullName -Destination $exePath -Force
     Write-Success "Copied to: $exePath"
 
-    # 🔄 Clean up only if copy succeeded
     if (Test-Path $exePath) {
         Write-Info "Cleaning up temporary files..."
         if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
@@ -55,7 +72,6 @@ try {
         Write-Success "Cleanup complete."
     }
 
-}
-catch {
-    Write-ErrorMsg "❌ Exception: $($_.Exception.Message)"
+} catch {
+    Write-ErrorMsg "Exception: $($_.Exception.Message)"
 }
