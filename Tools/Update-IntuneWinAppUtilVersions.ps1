@@ -32,10 +32,10 @@
 #>
 
 param(
-    [string]$RepositoryOwner = "microsoft",
-    [string]$RepositoryName = "Microsoft-Win32-Content-Prep-Tool",
-    [int]$MaxReleases = 100,
-    [string]$OutputDirectory = "$env:TEMP\Win32ContentPrepTmp"
+    [string] $RepositoryOwner = "microsoft",
+    [string] $RepositoryName = "Microsoft-Win32-Content-Prep-Tool",
+    [int] $MaxReleases = 100,
+    [string] $OutputDirectory = "$env:TEMP\Win32ContentPrepTmp"
 )
 
 if (-not (Test-Path $OutputDirectory)) {
@@ -60,15 +60,19 @@ $results = @()
 $total = $tags.Count
 $current = 0
 
+# Initialize index to track first release as 'latest'
+$index = 0
+
 foreach ($tag in $tags) {
     $current++
+    $index++
     $version = $tag.name
     $zipUrl = "https://github.com/$RepositoryOwner/$RepositoryName/archive/refs/tags/$version.zip"
     $zipFile = Join-Path $OutputDirectory "$version.zip"
     $extractPath = Join-Path $OutputDirectory $version
-
+    
     Write-Progress -Activity "Downloading ZIP ($version)" -Status "Release $current of $total" -PercentComplete (($current / $total) * 100)
-
+    
     if (-not (Test-Path $extractPath)) {
         try {
             Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile -ErrorAction Stop
@@ -78,11 +82,17 @@ foreach ($tag in $tags) {
             continue
         }
     }
-
+    
     # Search for IntuneWinAppUtil.exe inside extracted files, read FileVersion property or mark as "Not found"
     $exePath = Get-ChildItem -Path $extractPath -Recurse -Filter "IntuneWinAppUtil.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
     $fileVersion = if ($exePath) { (Get-Item $exePath.FullName).VersionInfo.FileVersion } else { "Not found" }
-
+    
+    # Append "(latest)" tag to the first release's version and file version
+    if ($index -eq 1) {
+        $version += " (latest)"
+        $fileVersion += " (latest)"
+    }
+    
     $results += [PSCustomObject]@{
         ReleaseVersion = $version
         FileVersion    = $fileVersion
@@ -90,6 +100,15 @@ foreach ($tag in $tags) {
 }
 
 Write-Progress -Activity "Complete" -Completed
+
+# Clean up downloaded ZIP files and extracted folders
+try {
+    Write-Host "Cleaning up downloaded files and extracted folders ..."
+    Get-ChildItem -Path $OutputDirectory -Filter *.zip -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $OutputDirectory -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+} catch {
+    Write-Warning "Cleanup failed: $_"
+}
 
 $table = "| Release Version | FileVersion |`n"
 $table += "|-----------------|-------------|`n"
