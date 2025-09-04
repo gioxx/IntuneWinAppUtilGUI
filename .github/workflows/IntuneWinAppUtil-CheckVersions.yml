@@ -1,0 +1,73 @@
+name: Update IntuneWinAppUtil Versions
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-if-new-release:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Get latest release tag from Microsoft repo
+      id: get_latest
+      shell: pwsh
+      run: |
+        $headers = @{ "User-Agent" = "PowerShell" }
+        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest" -Headers $headers
+
+        $tagName = $response.tag_name
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "latest_tag=$tagName"
+
+    - name: Read last processed version if exists
+      id: read_version
+      shell: pwsh
+      run: |
+        if (Test-Path ./Tools/last_processed_version.txt) {
+          $version = Get-Content ./Tools/last_processed_version.txt -Raw
+          Write-Host "Last processed version: $version"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "last_version=$version"
+        } else {
+          Write-Host "No previous version file found."
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "last_version="
+        }
+
+    - name: Check if update is needed
+      id: check_update
+      shell: pwsh
+      run: |
+        $latest = "${{ steps.get_latest.outputs.latest_tag }}"
+        $last = "${{ steps.read_version.outputs.last_version }}"
+        if ($latest -and $latest -ne $last) {
+          Write-Host "New version detected: $latest"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "do_update=true"
+        } else {
+          Write-Host "No new version detected, skipping update."
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "do_update=false"
+        }
+
+    - name: Run PowerShell script and update files
+      if: steps.check_update.outputs.do_update == 'true'
+      shell: pwsh
+      run: |
+        .\Tools\Update-IntuneWinAppUtilVersions.ps1 -OutputDirectory .\Tools
+
+        # Save new version for next runs
+        "${{ steps.get_latest.outputs.latest_tag }}" | Out-File -FilePath Tools/last_processed_version.txt -Encoding utf8
+
+    - name: Commit and push if changes detected
+      if: steps.check_update.outputs.do_update == 'true'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add Tools/IntuneWinAppUtilVersions.md Tools/last_processed_version.txt
+        git diff --cached --quiet || git commit -m "Update IntuneWinAppUtil version list to ${{ steps.get_latest.outputs.latest_tag }}"
+        git push
+      shell: bash
