@@ -39,10 +39,13 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          $tagVersion = Get-Content version.txt
+          
+          $tagVersion = (Get-Content version.txt)
           git add IntuneWinAppUtilGUI.psd1 UI/UI.xaml
           git diff --cached --quiet || git commit -m "Update version to $tagVersion [ci skip]"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_REF#refs/heads/}
+          
+          $branchName = $env:GITHUB_REF -replace '^refs/heads/', ''
+          git push "https://x-access-token:${env:GITHUB_TOKEN}@github.com/${env:GITHUB_REPOSITORY}.git" HEAD:$branchName
 
       - name: Validate module manifest
         shell: pwsh
