@@ -33,15 +33,17 @@ jobs:
           }
 
       - name: Commit and push updated version files
+        shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          tagVersion=$(cat version.txt)
+          $tagVersion = Get-Content version.txt
           git add IntuneWinAppUtilGUI.psd1 UI/UI.xaml
           git diff --cached --quiet || git commit -m "Update version to $tagVersion [ci skip]"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_REF#refs/heads/}
+
 
       - name: Validate module manifest
         shell: pwsh
