@@ -6,20 +6,24 @@ on:
       - 'v*'
 
 permissions:
-  contents: write # Required to push changes (UI.xaml/psd1) to the repository
+  contents: write  # Needed to push version bump back to the repo
 
 jobs:
   publish:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout default branch
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Update version in psd1 and UI.xaml
         shell: pwsh
         run: |
-          $tagVersion = '${{ github.ref_name }}' -replace '^v', ''  # es: "v1.0.0" → "1.0.0"
+          $tagVersion = '${{ github.ref_name }}' -replace '^v', ''  # e.g. "v1.0.0" -> "1.0.0"
           Set-Content -Path version.txt -Value $tagVersion
 
           # Update version in PSD1
@@ -33,16 +37,22 @@ jobs:
           }
 
       - name: Commit and push updated version files
-        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
+          set -euo pipefail
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          tagVersion=$(cat version.txt)
-          git add IntuneWinAppUtilGUI.psd1 UI/UI.xaml
-          git diff --cached --quiet || git commit -m "Update version to $tagVersion [ci skip]"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_REF#refs/heads/}
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          tagVersion="$(cat version.txt)"
+          git add IntuneWinAppUtilGUI.psd1 UI/UI.xaml || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Update version to ${tagVersion} [ci skip]"
+            git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${DEFAULT_BRANCH}"
+          else
+            echo "No changes to commit."
+          fi
 
       - name: Validate module manifest
         shell: pwsh
@@ -65,18 +75,13 @@ jobs:
             "$moduleName.psm1",
             "README.md"
           )
-
           foreach ($file in $includeFiles) {
-            if (Test-Path $file) {
-              Copy-Item -Path $file -Destination $moduleDir -Force
-            }
+            if (Test-Path $file) { Copy-Item -Path $file -Destination $moduleDir -Force }
           }
 
           $foldersToInclude = @("Private", "Public", "Assets", "UI")
           foreach ($folder in $foldersToInclude) {
-            if (Test-Path $folder) {
-              Copy-Item -Path $folder -Destination $moduleDir -Recurse -Force
-            }
+            if (Test-Path $folder) { Copy-Item -Path $folder -Destination $moduleDir -Recurse -Force }
           }
 
       - name: Publish module to PowerShell Gallery
