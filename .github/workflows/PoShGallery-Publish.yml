@@ -44,7 +44,6 @@ jobs:
           git diff --cached --quiet || git commit -m "Update version to $tagVersion [ci skip]"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_REF#refs/heads/}
 
-
       - name: Validate module manifest
         shell: pwsh
         run: |
