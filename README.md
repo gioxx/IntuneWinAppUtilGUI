@@ -14,12 +14,11 @@ This tool simplifies the packaging of Win32 apps for Microsoft Intune by providi
 ## 🔧 Features
 
 - Built with **WPF** (XAML) and **PowerShell** — no external dependencies.
+- Automatically stores tool path and reuses it on next launch (saved in a JSON file, check [section "Configuration file"](#%EF%B8%8F-configuration-file)).
 - Graphical interface for all required options (`-c`, `-s`, `-o`).
-- Optional **auto-download** of the latest version of `IntuneWinAppUtil.exe` from GitHub.
-- Automatically stores tool path and reuses it on next launch (saved in JSON file).
-- Supports **ESC** (to close the window) and **ENTER** (to run).
+- **Auto-download** of the latest version of `IntuneWinAppUtil.exe` from GitHub (optional).
+- It detects the use of PSAppDeployToolkit and automatically proposes executable file and final IntuneWin package name.
 - Sanitizes invalid characters from the output filename.
-- Offers option to open the target folder after a successful run.
 
 ---
 
@@ -95,13 +94,14 @@ If the path to `IntuneWinAppUtil.exe` is not provided:
 - The GUI will **automatically download and extract** the latest tool from:
   [https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest)
 - The tool will be stored locally under the `%APPDATA%\IntuneWinAppUtilGUI\bin` folder.
+- You can always choose to download the latest available version by simply clicking the "Force download" button.
 
 ---
 
 ## 💡 Tips
 
 - Press **ESC** to close the window.
-- Press **ENTER** to execute the tool.
+- Press **ENTER** to run the packaging when you are ready.
 - A small tooltip message at the bottom of the GUI provides quick usage hints.
 - Clear and Exit buttons are provided to reset inputs or close the app manually.
 
@@ -116,6 +116,7 @@ The graphical interface makes use of emojis (such as ✅, 🚀, 🔧, etc.) to i
 
 > [!IMPORTANT]  
 > This is only a cosmetic issue. The script and tool functionality are not affected in any way. Everything will continue to work normally on both Windows 10 and Windows 11.
+> If you would like to help me fix this problem, feel free to open a Pull Request with your integration!
 
 ---
 

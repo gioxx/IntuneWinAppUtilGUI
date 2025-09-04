@@ -48,8 +48,9 @@
                 <TextBox Name="SetupFile" Grid.Column="0" Margin="0,0,10,0" Padding="4"/>
                 <Button Name="BrowseSetup" Content="Browse..." Grid.Column="1" Width="80" Padding="2"/>
             </Grid>
+
             <TextBlock
-                Text="Remember that the setup file must be a valid MSI, EXE or ZIP file.&#x0a;If you want to use a ZIP file, please ensure that it contains only one executable file (e.g., setup.exe).&#x0a;If you want to use an EXE file, please ensure that it is a valid installer."
+                Text="Remember that the setup file must be a valid MSI, EXE or ZIP file.&#x0a;If you want to use a ZIP file, please ensure that it contains only one executable file (e.g., setup.exe). If you want to use an EXE file, please ensure that it is a valid installer.&#x0a;If I detect the existence of Invoke-AppDeployToolkit.exe in the source folder, I propose it as the default setup file, making life easier for those who use PSAppDeployToolkit."
                 Foreground="Gray"
                 FontSize="12"
                 Margin="0,5,0,0"
@@ -71,27 +72,46 @@
 
         <!-- Tool Path -->
         <Label Grid.Row="3" Grid.Column="0" Content="  IntuneWinAppUtil Path:" VerticalAlignment="Top" Margin="0,5"/>
-        <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,5" MinHeight="35">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBox Name="ToolPathBox" Grid.Column="0" Margin="0,0,10,0" Padding="4" HorizontalScrollBarVisibility="Auto"/>
-                <Button Name="BrowseTool" Content="Browse..." Grid.Column="1" Width="80" Padding="2"/>
-            </Grid>
-            <TextBlock
-                Text="You can also not specify (or search for) the path to the executable. If not specified, the latest version of the tool will be downloaded and the field will be automatically filled in.&#x0a;If you want to use a specific version, please specify the path to the executable."
-                Foreground="Gray"
-                FontSize="12"
-                Margin="0,5,0,0"
-                TextWrapping="Wrap"/>
+        <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,5" MinHeight="50">
+        <Grid>
+            <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBox Name="ToolPathBox" Grid.Column="0" Margin="0,0,10,0" Padding="4" HorizontalScrollBarVisibility="Auto"/>
+            <Button Name="BrowseTool" Content="Browse..." Grid.Column="1" Width="90" Padding="2" Margin="0,0,10,0"/>
+            <Button Name="RedownloadTool" Content="Force download" Grid.Column="2" Width="110" Padding="2"/>
+        </Grid>
+
+        <!-- Version line with static link -->
+        <TextBlock Margin="0,5,0,0" Foreground="Gray" FontSize="12" TextWrapping="Wrap">
+            <Run Name="ToolVersionText" Text="IntuneWinAppUtil version: (not detected)"/>
+            <Run Text=" (" />
+            <Hyperlink NavigateUri="https://github.com/gioxx/IntuneWinAppUtilGUI/blob/main/Tools/IntuneWinAppUtilVersions.md" ToolTip="Open versions list page">Version history</Hyperlink>
+            <Run Text=")" />
+        </TextBlock>
+
+        <TextBlock
+            Text="If you want to use a specific version, please specify the path to the executable.&#x0a;You can also not specify (or search for) the path to the executable. If not specified, the latest version of the tool will be downloaded and the field will be automatically filled in.&#x0a;You can also use, at any time, the 'Force download' button to download the latest available version from GitHub."
+            Foreground="Gray"
+            FontSize="12"
+            Margin="0,5,0,0"
+            TextWrapping="Wrap"/>
         </StackPanel>
 
         <!-- Final Filename -->
         <Label Grid.Row="4" Grid.Column="0" Content="  Final filename:" VerticalAlignment="Top" Margin="0,5"/>
         <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,5" MinHeight="35">
             <TextBox Name="FinalFilename" Margin="0,5" Padding="4"/>
+
+            <TextBlock
+                Text="If I detect the existence of Invoke-AppDeployToolkit.ps1 in the source folder, I propose a default name based on the application name and version extracted from the script."
+                Foreground="Gray"
+                FontSize="12"
+                Margin="0,5,0,0"
+                TextWrapping="Wrap"/>
         </StackPanel>
 
         <!-- Buttons -->
@@ -111,7 +131,7 @@
 
         <!-- Info tooltip -->
         <TextBlock Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
-           Text="⚠️ Source folder, setup file, output folder and IntuneWinAppUtil(.exe) Path are required (*).&#x0a;ℹ️ Final filename is optional and used for renaming the .intunewin file. If not provided, the tool will generate a name based on the source folder.&#x0a;&#x0a;ESC to close the window.&#x0a;Click on 'Run' or press ENTER on keyboard to execute the IntuneWinAppUtil with the provided parameters."
+           Text="⚠️ Source folder, setup file and output folder are required (*).&#x0a;ℹ️ Final filename is optional and used for renaming the .intunewin file. If not provided, the tool will generate a name based on the source folder.&#x0a;ℹ️ IntuneWinAppUtil Path is also optional. If not provided, the tool will automatically download the latest version from GitHub.&#x0a;&#x0a;ESC to close the window.&#x0a;Click on 'Run' or press ENTER on keyboard to execute the IntuneWinAppUtil with the provided parameters."
            Foreground="Gray" FontSize="12" Margin="0,20,0,0" TextWrapping="Wrap"/>
 
         <!-- GitHub Link -->
