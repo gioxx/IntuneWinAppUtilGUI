@@ -9,7 +9,7 @@ permissions:
   contents: write  # Needed to push version bump back to the repo
 
 jobs:
-  publish:
+  POShGallery-Publish:
     runs-on: windows-latest
 
     steps:
@@ -75,6 +75,7 @@ jobs:
             "$moduleName.psm1",
             "README.md"
           )
+          
           foreach ($file in $includeFiles) {
             if (Test-Path $file) { Copy-Item -Path $file -Destination $moduleDir -Force }
           }
