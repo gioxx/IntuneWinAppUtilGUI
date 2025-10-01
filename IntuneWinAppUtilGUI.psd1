@@ -1,33 +1,34 @@
 @{
-    RootModule         = 'IntuneWinAppUtilGUI.psm1'
-    ModuleVersion      = '1.0.3'
-    GUID               = '7db79126-1b57-48d2-970a-4795692dfcfc'
-    Author             = 'Giovanni Solone'
-    Description        = 'GUI wrapper for IntuneWinAppUtil.exe with config file support and WPF interface.'
+    RootModule           = 'IntuneWinAppUtilGUI.psm1'
+    ModuleVersion        = '1.0.4'
+    GUID                 = '7db79126-1b57-48d2-970a-4795692dfcfc'
+    Author               = 'Giovanni Solone'
+    Description          = 'GUI wrapper for IntuneWinAppUtil.exe with config file support and WPF interface.'
 
-    PowerShellVersion  = '5.1'
+    # Minimum required PowerShell (PS 5.1 works; better with PS 7+)
+    PowerShellVersion    = '5.1'
+    CompatiblePSEditions = @('Desktop', 'Core')
+    RequiredAssemblies   = @()
+    FunctionsToExport    = @()
+    CmdletsToExport      = @()
+    VariablesToExport    = @()
+    AliasesToExport      = @()
 
-    RequiredAssemblies = @(
-        'System.Windows.Forms',
-        'PresentationFramework'
-    )
-
-    FunctionsToExport  = @('Show-IntuneWinAppUtilGui')
-
-    CmdletsToExport    = @()
-    VariablesToExport  = @()
-    AliasesToExport    = @()
-
-    PrivateData        = @{
+    PrivateData          = @{
         PSData = @{
-            Tags         = @('Intune', 'Win32', 'GUI', 'packaging', 'IntuneWinAppUtil', 'IntuneWinAppUtil.exe', 'Microsoft', 'PowerShell', 'PSADT', 'AppDeployToolkit')
-            License      = 'MIT'
+            Tags         = @('Intune', 'Win32', 'GUI', 'packaging', 'IntuneWinAppUtil', 'Microsoft', 'PowerShell', 'PSADT', 'AppDeployToolkit')
             ProjectUri   = 'https://github.com/gioxx/IntuneWinAppUtilGUI'
-            Icon         = 'icon.png'
-            Readme       = 'README.md'
+            LicenseUri   = 'https://opensource.org/licenses/MIT'
+            IconUri      = 'https://raw.githubusercontent.com/gioxx/IntuneWinAppUtilGUI/main/Assets/icon.png'
             ReleaseNotes = @'
-            - NEW: PSADT - If Invoke-AppDeployToolkit.exe is detected in the source folder, it is proposed as the default setup file. If Invoke-AppDeployToolkit.ps1 is detected in the source folder, it is parsed to propose a name for the IntuneWin package.
-            - Improved: The version of the IntuneWinAppUtil.exe file in use is shown on the screen. You can also use the "Force download" button to download the latest version available from GitHub. The list of versions is available at the "Version history" link.
+- Bugfix: Removed any reference to ZIP uploads as setup files.
+- Bugfix: Fixed PS 5.1 incompatibility in relative-path resolution ([System.IO.Path]::GetRelativePath is PS 7+).
+- Improved: Code cleanup, removed redundant GitHub download logic; refactoring.
+- Improved: Validates setup file existence and type.
+- Improved: Tries to create output folder when missing.
+- Improved: Ensures exactly one ".intunewin" extension on output.
+- Improved: If Source folder is not specified, it is inferred from Setup file.
+- Improved: Added more inline comments for maintainability.
 '@
         }
     }
