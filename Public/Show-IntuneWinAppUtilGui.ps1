@@ -1,151 +1,14 @@
-# Show-Gui.ps1
-Add-Type -AssemblyName PresentationFramework
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-
-# Returns a relative path from BasePath to TargetPath when possible; otherwise returns the absolute path.
-function Get-RelativePath {
-    param(
-        [Parameter(Mandatory)] [string]$BasePath,
-        [Parameter(Mandatory)] [string]$TargetPath
-    )
-    
-    try {
-        $baseFull = [System.IO.Path]::GetFullPath(($BasePath.TrimEnd('\') + '\'))
-        $targetFull = [System.IO.Path]::GetFullPath($TargetPath)
-        $uriBase   = [Uri]$baseFull
-        $uriTarget = [Uri]$targetFull
-        return $uriBase.MakeRelativeUri($uriTarget).ToString().Replace('/','\')
-    } catch {
-        return $TargetPath
-    }
-}
-
-# If Invoke-AppDeployToolkit.exe exists under SourcePath, suggest it into the Setup textbox
-# and optionally populate FinalFilename if AppName/AppVersion are found in Invoke-AppDeployToolkit.ps1
-function Set-SetupFromSource {
-    param([string]$SourcePath)
-
-    if ([string]::IsNullOrWhiteSpace($SourcePath) -or -not (Test-Path $SourcePath)) { return }
-
-    # If current SetupFile value already points to an existing file (absolute or relative to source), do not override.
-    $current = $SetupFile.Text.Trim()
-    if ($current) {
-        if (Test-Path $current) { return }
-        $maybeRelative = Join-Path $SourcePath $current
-        if (Test-Path $maybeRelative) { return }
-    }
-
-    # Search for Invoke-AppDeployToolkit.exe
-    $exeHit = Get-ChildItem -Path $SourcePath -Filter 'Invoke-AppDeployToolkit.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($exeHit) {
-        # Prefer a relative path when the file is inside the source folder
-        $relativeExe = Get-RelativePath -BasePath $SourcePath -TargetPath $exeHit.FullName
-        $SetupFile.Text = $relativeExe
-
-        # Look for Invoke-AppDeployToolkit.ps1 in the same folder
-        $ps1Path = Join-Path $exeHit.Directory.FullName 'Invoke-AppDeployToolkit.ps1'
-        if (Test-Path $ps1Path) {
-            try {
-                $content = Get-Content $ps1Path -Raw
-
-                $appName = if ($content -match "AppName\s*=\s*'([^']+)'") { $matches[1] } else { $null }
-                $appVersion = if ($content -match "AppVersion\s*=\s*'([^']+)'") { $matches[1] } else { $null }
-
-                if ($appName -and $appVersion) {
-                    # Clean filename: remove spaces and invalid chars
-                    $cleanName = ($appName -replace '\s+', '' -replace '[\\/:*?"<>|]', '-')
-                    $cleanVer = ($appVersion -replace '\s+', '' -replace '[\\/:*?"<>|]', '-')
-                    $FinalFilename.Text = "${cleanName}_${cleanVer}"
-                }
-            } catch {
-                # Fail silently if parsing goes wrong
-            }
-        }
-    }
-}
-
-# Returns file version (FileVersion preferred, then ProductVersion); $null if not available.
-function Get-ExeVersion {
-    param([Parameter(Mandatory)][string]$Path)
-
-    try {
-        if (-not (Test-Path $Path)) { return $null }
-        $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Path)
-        if ($vi.FileVersion -and $vi.FileVersion.Trim()) { return $vi.FileVersion.Trim() }
-        if ($vi.ProductVersion -and $vi.ProductVersion.Trim()) { return $vi.ProductVersion.Trim() }
-        return $null
-    } catch {
-        return $null
-    }
-}
-
-# Updates the ToolVersion TextBlock with current version or a default message.
-function Show-ToolVersion {
-    param([string]$Path)
-
-    if (-not $ToolVersionText) { return }
-    $ver = if ($Path) { Get-ExeVersion -Path $Path } else { $null }
-    $ToolVersionText.Text = if ($ver) {
-        "IntuneWinAppUtil version: $ver"
-    } else {
-        "IntuneWinAppUtil version: (not detected)"
-    }
-}
-
-# Downloads the latest IntuneWinAppUtil.exe by fetching the master zip from GitHub, 
-# extracting it, locating the EXE, and copying it into %APPDATA%\IntuneWinAppUtilGUI\bin.
-function Invoke-RedownloadIntuneTool {
-    param()
-
-    $appRoot   = Join-Path $env:APPDATA 'IntuneWinAppUtilGUI'
-    $binDir    = Join-Path $appRoot 'bin'
-    $exePath   = Join-Path $binDir 'IntuneWinAppUtil.exe'
-    $zipUrl    = 'https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/archive/refs/heads/master.zip'
-    $zipPath   = Join-Path $env:TEMP 'IntuneWinAppUtil-master.zip'
-    $extractTo = Join-Path $env:TEMP 'IntuneExtract'
-
-    try {
-        # Clean previous temp
-        if (Test-Path $extractTo) { Remove-Item $extractTo -Recurse -Force }
-
-        # Ensure bin dir exists (and clear old exe to avoid stale versions)
-        New-Item -ItemType Directory -Path $binDir -Force | Out-Null
-        if (Test-Path $exePath) { Remove-Item $exePath -Force -ErrorAction SilentlyContinue }
-
-        # Download ZIP
-        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
-
-        # Extract ZIP
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $extractTo, $true)
-
-        # Find EXE in extracted content
-        $found = Get-ChildItem -Path $extractTo -Recurse -Filter 'IntuneWinAppUtil.exe' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $found) {
-            throw "IntuneWinAppUtil.exe not found in extracted archive."
-        }
-
-        # Copy to bin
-        Copy-Item -Path $found.FullName -Destination $exePath -Force
-
-        # Cleanup temp
-        if (Test-Path $zipPath)   { Remove-Item $zipPath -Force }
-        if (Test-Path $extractTo) { Remove-Item $extractTo -Recurse -Force }
-
-        return $exePath
-    } catch {
-        throw $_
-    }
-}
-
+# Show-IntuneWinAppUtilGui.ps1
 # Show the main GUI window and handle all events.
 function Show-IntuneWinAppUtilGui {
     [CmdletBinding()]
     param ()
 
+    $moduleRoot = Split-Path -Path $PSScriptRoot -Parent
     $configPath = Join-Path -Path $env:APPDATA -ChildPath "IntuneWinAppUtilGUI\config.json"
-    $xamlPath = Join-Path -Path $PSScriptRoot -ChildPath "..\UI\UI.xaml"
-    $iconPath = Join-Path -Path $PSScriptRoot -ChildPath "..\Assets\Intune.ico"
+    $xamlPath = Join-Path $moduleRoot 'UI\UI.xaml'
+    $iconPath = Join-Path $moduleRoot 'Assets\Intune.ico'
+    $iconPngPath = Join-Path $moduleRoot 'Assets\Intune.png'
 
     if (-not (Test-Path $xamlPath)) {
         Write-Error "XAML file not found: $xamlPath"
@@ -163,7 +26,7 @@ function Show-IntuneWinAppUtilGui {
     $ToolVersion = $window.FindName("ToolVersion")
     $ToolVersionText = $window.FindName("ToolVersionText")
     $ToolVersionLink = $window.FindName("ToolVersionLink")
-    $RedownloadTool = $window.FindName("RedownloadTool")
+    $DownloadTool = $window.FindName("DownloadTool")
     
     $FinalFilename = $window.FindName("FinalFilename")
     
@@ -180,7 +43,7 @@ function Show-IntuneWinAppUtilGui {
     $SourceFolder.Add_TextChanged({
         param($sender, $e)
         $src = $SourceFolder.Text.Trim()
-        if ($src) { Set-SetupFromSource -SourcePath $src }
+        if ($src) { Set-SetupFromSource -SourcePath $src -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename }
     })
 
     # Preload config.json if it exists
@@ -189,7 +52,7 @@ function Show-IntuneWinAppUtilGui {
             $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
             if ($cfg.ToolPath -and (Test-Path $cfg.ToolPath)) {
                 $ToolPathBox.Text = $cfg.ToolPath
-                Show-ToolVersion -Path $cfg.ToolPath
+                Show-ToolVersion -Path $cfg.ToolPath -Target $ToolVersionText
             }
         } catch {}
     }
@@ -200,7 +63,7 @@ function Show-IntuneWinAppUtilGui {
         if ($dialog.ShowDialog() -eq 'OK') {
             $SourceFolder.Text = $dialog.SelectedPath
             # Auto-suggest Invoke-AppDeployToolkit.exe when present in the selected source
-            Set-SetupFromSource -SourcePath $dialog.SelectedPath
+            Set-SetupFromSource -SourcePath $dialog.SelectedPath -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename
         }
     })
 
@@ -214,21 +77,21 @@ function Show-IntuneWinAppUtilGui {
 
             if (-not [string]::IsNullOrWhiteSpace($sourceRoot) -and (Test-Path $sourceRoot)) {
                 try {
-                    $relativePath = [System.IO.Path]::GetRelativePath($sourceRoot, $selectedPath)
+                    $relativePath = Get-RelativePath -BasePath $sourceRoot -TargetPath $selectedPath
                     if (-not ($relativePath.StartsWith(".."))) {
-                        # File is inside source folder or subdir
-                        $SetupFile.Text = $relativePath
+                        $SetupFile.Text = $relativePath # File is inside source folder or subdir
                     } else {
-                        # Outside of source folder
-                        $SetupFile.Text = $selectedPath
+                        $SetupFile.Text = $selectedPath # Outside of source folder
                     }
                 } catch {
-                    # If relative path fails (e.g. bad format), fallback
-                    $SetupFile.Text = $selectedPath
+                    $SetupFile.Text = $selectedPath # If relative path fails (e.g. bad format), fallback
                 }
+            # } else {
+            #     $SetupFile.Text = $selectedPath # Source folder not set or invalid, fallback
+            # }
             } else {
-                # Source folder not set or invalid, fallback
-                $SetupFile.Text = $selectedPath
+                $SourceFolder.Text = Split-Path $selectedPath -Parent # Source folder not set or invalid -> infer it from the selected setup path
+                $SetupFile.Text = [System.IO.Path]::GetFileName($selectedPath) # Store only the file name in SetupFile so it is relative to SourceFolder
             }
         }
     })
@@ -245,24 +108,24 @@ function Show-IntuneWinAppUtilGui {
         $dlg.Filter = "IntuneWinAppUtil.exe|IntuneWinAppUtil.exe"
         if ($dlg.ShowDialog() -eq 'OK') {
             $ToolPathBox.Text = $dlg.FileName
-            Show-ToolVersion -Path $dlg.FileName
+            Show-ToolVersion -Path $dlg.FileName -Target $ToolVersionText
         }
     })
 
     # Force download the IntuneWinAppUtil.exe tool
-    $RedownloadTool.Add_Click({
+    $DownloadTool.Add_Click({
         $confirm = [System.Windows.MessageBox]::Show(
-            "This will re-download the latest IntuneWinAppUtil.exe and replace the one in your bin folder.`n`nProceed?",
-            "Confirm re-download",
+            "This will download the latest IntuneWinAppUtil.exe and replace (if already exists) the one in your bin folder.`n`nProceed?",
+            "Confirm force download",
             [System.Windows.MessageBoxButton]::YesNo,
             [System.Windows.MessageBoxImage]::Question
         )
         if ($confirm -ne [System.Windows.MessageBoxResult]::Yes) { return }
 
         try {
-            $newPath = Invoke-RedownloadIntuneTool
+            $newPath = Invoke-DownloadIntuneTool
             $ToolPathBox.Text = $newPath
-            Show-ToolVersion -Path $newPath
+            Show-ToolVersion -Path $newPath -Target $ToolVersionText
 
             [System.Windows.MessageBox]::Show(
                 "IntuneWinAppUtil.exe has been refreshed.`n`nPath:`n$newPath",
@@ -272,7 +135,7 @@ function Show-IntuneWinAppUtilGui {
             )
         } catch {
             [System.Windows.MessageBox]::Show(
-                "Re-download failed:`n$($_.Exception.Message)",
+                "Download failed:`n$($_.Exception.Message)",
                 "Error",
                 [System.Windows.MessageBoxButton]::OK,
                 [System.Windows.MessageBoxImage]::Error
@@ -284,122 +147,189 @@ function Show-IntuneWinAppUtilGui {
     $ToolPathBox.Add_TextChanged({
         param($sender, $e)
         $p = $ToolPathBox.Text.Trim()
-        if ($p) { Show-ToolVersion -Path $p } else { Show-ToolVersion -Path $null }
+        if ($p) { Show-ToolVersion -Path $p -Target $ToolVersionText } else { Show-ToolVersion -Path $null -Target $ToolVersionText }
     })
 
-    $RunButton.Add_Click({
-        $c = $SourceFolder.Text.Trim()
-        $s = $SetupFile.Text.Trim()
-        $o = $OutputFolder.Text.Trim()
-        $f = $FinalFilename.Text.Trim()
+    # If the user typed/pasted an absolute setup path before setting SourceFolder,
+    # infer SourceFolder from that path and convert SetupFile to a relative file name.
+    $SetupFile.Add_LostFocus({
+        $sText = $SetupFile.Text.Trim()
+        # Only act if SourceFolder is empty and SetupFile looks like an absolute existing path
+        if ([string]::IsNullOrWhiteSpace($SourceFolder.Text) -and
+            -not [string]::IsNullOrWhiteSpace($sText) -and
+            [System.IO.Path]::IsPathRooted($sText) -and
+            (Test-Path $sText)) {
 
+            $SourceFolder.Text = Split-Path $sText -Parent
+            $SetupFile.Text = [System.IO.Path]::GetFileName($sText)
+            # Note: SourceFolder.Text change will NOT override SetupFile because Set-SetupFromSource
+            # early-returns if SetupFile already points to an existing file (absolute or relative).
+        }
+    })
+
+    # Run button: validate inputs, run IntuneWinAppUtil.exe, rename output if needed
+    $RunButton.Add_Click({
+        $c = $SourceFolder.Text.Trim() # Source folder
+        $s = $SetupFile.Text.Trim() # Setup file (relative or absolute)
+        $o = $OutputFolder.Text.Trim() # Output folder
+        $f = $FinalFilename.Text.Trim() # Final filename
+
+        # Clean FinalFilename from invalid chars
         $f = -join ($f.ToCharArray() | Where-Object { [System.IO.Path]::GetInvalidFileNameChars() -notcontains $_ })
 
+        # Validate source folder
         if (-not (Test-Path $c)) { [System.Windows.MessageBox]::Show("Invalid source folder path.", "Error", "OK", "Error"); return }
+        
+        # Validate setup file
         if (-not (Test-Path $s)) {
             $s = Join-Path $c $s
             if (-not (Test-Path $s)) { [System.Windows.MessageBox]::Show("Setup file not found.", "Error", "OK", "Error"); return }
         }
-        if (-not (Test-Path $o)) { [System.Windows.MessageBox]::Show("Invalid output folder path.", "Error", "OK", "Error"); return }
 
-        # IntuneWinAppUtil.exe path check (or download if not set)
-        $toolPath = $ToolPathBox.Text.Trim()
-        $downloadDir = Join-Path $env:APPDATA "IntuneWinAppUtilGUI\bin"
-        $exePath = Join-Path $downloadDir "IntuneWinAppUtil.exe"
-
-        if ([string]::IsNullOrWhiteSpace($toolPath) -or -not (Test-Path $toolPath)) {
-            if (-not (Test-Path $exePath)) {
-                try {
-                    $url = "https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/archive/refs/heads/master.zip"
-                    $zipPath = Join-Path $env:TEMP "IntuneWinAppUtil-master.zip"
-                    $extractPath = Join-Path $env:TEMP "IntuneExtract"
-
-                    if (Test-Path $extractPath) { Remove-Item $extractPath -Recurse -Force }
-
-                    Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
-                    [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $extractPath, $true)
-                    Remove-Item $zipPath -Force
-
-                    # Find the executable in the extracted structure
-                    $sourceExe = Get-ChildItem -Path $extractPath -Recurse -Filter "IntuneWinAppUtil.exe" | Select-Object -First 1
-
-                    if (-not $sourceExe) {
-                        throw "IntuneWinAppUtil.exe not found in extracted archive."
-                    }
-
-                    # Copy to destination
-                    New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
-                    Copy-Item -Path $sourceExe.FullName -Destination $exePath -Force
-
-                    [System.Windows.MessageBox]::Show("Tool downloaded and extracted to:`n$exePath", "Download Complete", "OK", "Info")
-                } catch {
-                    [System.Windows.MessageBox]::Show("Failed to download or extract the archive:`n$($_.Exception.Message)", "Download Error", "OK", "Error")
-                    return
-                }
-            }
-
-            if (Test-Path $exePath) {
-                $toolPath = $exePath
-                $ToolPathBox.Text = $toolPath
-                Show-ToolVersion -Path $toolPath  # equivalent -Path $exePath
-            }
-        }
-
-        if (-not (Test-Path $toolPath)) {
-            [System.Windows.MessageBox]::Show("IntuneWinAppUtil.exe not found at:`n$toolPath", "Error", "OK", "Error")
+        # Validate extension before running the tool
+        $extSetup = [System.IO.Path]::GetExtension($s).ToLowerInvariant()
+        if ($extSetup -notin @(".exe", ".msi")) {
+            [System.Windows.MessageBox]::Show(
+                "Setup file must be .exe or .msi (got '$extSetup').",
+                "Invalid setup type", "OK", "Error"
+            )
             return
         }
 
-        $IWAUtilargs = "-c `"$c`" -s `"$s`" -o `"$o`""
-        Start-Process -FilePath $toolPath -ArgumentList $IWAUtilargs -WorkingDirectory (Split-Path $toolPath) -WindowStyle Normal -Wait
+        # Validate output folder
+        if (-not (Test-Path $o)) { 
+            try {
+                New-Item -Path $o -ItemType Directory -Force | Out-Null
+            } catch {
+                [System.Windows.MessageBox]::Show("Output folder path is invalid and could not be created.", "Error", "OK", "Error")
+                return
+            }
+        }
 
-        Start-Sleep -Seconds 1
+        # Normalize all paths to absolute
+        try {
+            $c = [System.IO.Path]::GetFullPath($c)
+            $s = [System.IO.Path]::GetFullPath($s)
+            $o = [System.IO.Path]::GetFullPath($o)
+        } catch {
+            [System.Windows.MessageBox]::Show("Invalid path format: $($_.Exception.Message)", "Error", "OK", "Error")
+            return
+        }
+
+        # IntuneWinAppUtil.exe path check (or initialize/download if not set)
+        $toolPath = Initialize-IntuneWinAppUtil -UiToolPath ($ToolPathBox.Text.Trim())
+
+        if (-not $toolPath -or -not (Test-Path $toolPath)) {
+            [System.Windows.MessageBox]::Show(
+                "IntuneWinAppUtil.exe not found and could not be initialized.",
+                "Error", "OK", "Error"
+            )
+            return
+        }
+
+        # Keep UI in sync and show version
+        $ToolPathBox.Text = $toolPath
+        Show-ToolVersion -Path $toolPath -Target $ToolVersionText
+        
+        # Build a single, properly-quoted argument string
+        # -c = source folder, -s = setup file (EXE/MSI), -o = output folder.
+        $iwaArgs = ('-c "{0}" -s "{1}" -o "{2}"' -f $c, $s, $o)
+
+        # Launch IntuneWinAppUtil.exe, wait, and capture exit code (WorkingDirectory is set to the tool's folder to avoid relative path issues)
+        try {
+            $proc = Start-Process -FilePath $toolPath `
+                -ArgumentList $iwaArgs `
+                -WorkingDirectory (Split-Path $toolPath) `
+                -WindowStyle Normal `
+                -PassThru
+        } catch {
+            [System.Windows.MessageBox]::Show(
+                "Failed to start IntuneWinAppUtil.exe:`n$($_.Exception.Message)",
+                "Execution error", "OK", "Error"
+            )
+            return
+        }
+        $proc.WaitForExit()
+
+        # Fail early if tool returned non-zero
+        if ($proc.ExitCode -ne 0) {
+            [System.Windows.MessageBox]::Show(
+                "IntuneWinAppUtil exited with code $($proc.ExitCode).",
+                "Packaging failed", "OK", "Error"
+            )
+            return
+        }
+
+        # Wait a bit for the output file to appear (up to 10 seconds, checking every 250ms)
+        # Compute the default output filename that IntuneWinAppUtil generates. By default it matches the setup's base name + ".intunewin".
         $defaultName = [System.IO.Path]::GetFileNameWithoutExtension($s) + ".intunewin"
         $defaultPath = Join-Path $o $defaultName
 
+        $timeoutSec = 10
+        $elapsed = 0
+        while (-not (Test-Path $defaultPath) -and $elapsed -lt $timeoutSec) {
+            Start-Sleep -Milliseconds 250
+            $elapsed += 0.25
+        }
+
         if (Test-Path $defaultPath) {
-            $newName = if ([string]::IsNullOrWhiteSpace($f)) {
-            (Split-Path $c -Leaf) + ".intunewin"
+            # Build desired name from $f (if any), ensuring exactly one ".intunewin":
+            # - If FinalFilename ($f) is blank, fallback to using the source folder name.
+            # - Otherwise use the provided FinalFilename.
+            if ([string]::IsNullOrWhiteSpace($f)) {
+                $desiredName = (Split-Path $c -Leaf) + ".intunewin"
             } else {
-                $f + ".intunewin"
+                $extF = [System.IO.Path]::GetExtension($f).ToLowerInvariant()
+                $baseF = if ($extF -eq ".intunewin") { [System.IO.Path]::GetFileNameWithoutExtension($f) } else { $f }
+                $desiredName = $baseF + ".intunewin"
             }
 
+            $newName = $desiredName
+
             try {
+                # Prepare collision-safe rename:
+                # If a file with the desired name already exists, append _1, _2, ... until unique.
                 $baseName = [System.IO.Path]::GetFileNameWithoutExtension($newName)
                 $ext = [System.IO.Path]::GetExtension($newName)
                 $finalName = $newName
                 $counter = 1
-        
+
                 while (Test-Path (Join-Path $o $finalName)) {
                     $finalName = "$baseName" + "_$counter" + "$ext"
                     $counter++
                 }
-        
+
+                # Perform the rename operation from the tool's default output to our final target name.
                 Rename-Item -Path $defaultPath -NewName $finalName -Force
                 $fullPath = Join-Path $o $finalName
-        
+
+                # Inform the user and optionally offer to open File Explorer with the file selected.
                 $msg = "Package created and renamed to:`n$finalName"
                 if ($finalName -ne $newName) {
                     $msg += "`n(Note: original name '$newName' already existed.)"
                 }
                 $msg += "`n`nOpen folder?"
-        
+
                 $resp = [System.Windows.MessageBox]::Show(
                     $msg,
                     "Success",
                     [System.Windows.MessageBoxButton]::YesNo,
                     [System.Windows.MessageBoxImage]::Information
                 )
+
                 if ($resp -eq "Yes") {
-                    Start-Process explorer.exe "/select,`"$fullPath`""
+                    Start-Process explorer.exe "/select,`"$fullPath`"" # Open Explorer with the new file pre-selected.
                 }
-        
+
             } catch {
-                [System.Windows.MessageBox]::Show("Renaming failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
+                [System.Windows.MessageBox]::Show("Renaming failed: $($_.Exception.Message)", "Warning", "OK", "Warning") # If anything goes wrong during the rename, show a warning.
             }
-            
+
         } else {
-            [System.Windows.MessageBox]::Show("Output file not found.", "Warning", "OK", "Warning")
+            [System.Windows.MessageBox]::Show(
+                "Output file not found:`n$defaultPath",
+                "Warning", "OK", "Warning"
+            ) # The expected output was not found; warn the user (the tool may have failed).
         }
     })
 
@@ -416,6 +346,7 @@ function Show-IntuneWinAppUtilGui {
         $window.Close()
     })
 
+    # Keyboard shortcuts: Esc to exit (with confirmation), Enter to run packaging
     $window.Add_KeyDown({
         param($sender, $e)
         switch ($e.Key) {
@@ -430,6 +361,7 @@ function Show-IntuneWinAppUtilGui {
         }
     })
 
+    # When the window is closed, save the ToolPath to config.json
     $window.Add_Closed({
         if (-not (Test-Path (Split-Path $configPath))) {
             New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
@@ -438,10 +370,25 @@ function Show-IntuneWinAppUtilGui {
         $cfg | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
     })
 
+    # Set window icon if available
     if (Test-Path $iconPath) {
         $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create((New-Object System.Uri $iconPath, [System.UriKind]::Absolute))
     }
 
+    # Find the Image control in XAML and load the PNG from disk and assign it to the Image.Source
+    $HeaderIcon = $window.FindName('HeaderIcon')
+    if ($HeaderIcon -and (Test-Path $iconPngPath)) {
+        # Use BitmapImage with OnLoad so the file is not locked after loading
+        $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
+        $bmp.BeginInit()
+        $bmp.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
+        $bmp.UriSource = [Uri]::new($iconPngPath, [UriKind]::Absolute)
+        $bmp.EndInit()
+
+        $HeaderIcon.Source = $bmp
+    }
+
+    # Hyperlink in the ToolVersionText to open the GitHub version history page (and other links if needed)
     $window.AddHandler([
         System.Windows.Documents.Hyperlink]::RequestNavigateEvent,
         [System.Windows.Navigation.RequestNavigateEventHandler] {
