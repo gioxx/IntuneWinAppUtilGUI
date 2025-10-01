@@ -33,5 +33,4 @@ if (Test-Path $publicDir) {
 }
 
 # Export only the intended public functions
-# (Add more names here as you create additional public commands)
 Export-ModuleMember -Function 'Show-IntuneWinAppUtilGui'
