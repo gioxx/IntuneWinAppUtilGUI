@@ -1,6 +1,6 @@
-# Show-IntuneWinAppUtilGui.ps1
+# Show-IntuneWinAppUtilGUI.ps1
 # Show the main GUI window and handle all events.
-function Show-IntuneWinAppUtilGui {
+function Show-IntuneWinAppUtilGUI {
     [CmdletBinding()]
     param ()
 
@@ -400,4 +400,4 @@ function Show-IntuneWinAppUtilGui {
     $window.ShowDialog() | Out-Null
 }
 
-Export-ModuleMember -Function Show-IntuneWinAppUtilGui
+Export-ModuleMember -Function Show-IntuneWinAppUtilGUI

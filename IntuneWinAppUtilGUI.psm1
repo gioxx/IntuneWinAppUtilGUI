@@ -31,6 +31,3 @@ if (Test-Path $publicDir) {
         }
     }
 }
-
-# Export only the intended public functions
-Export-ModuleMember -Function 'Show-IntuneWinAppUtilGui'
