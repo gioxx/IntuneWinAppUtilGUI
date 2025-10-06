@@ -19,12 +19,35 @@ jobs:
     - name: Get latest release tag from Microsoft repo
       id: get_latest
       shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        $headers = @{ "User-Agent" = "PowerShell" }
-        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest" -Headers $headers
+        # Build authenticated headers for GitHub REST API
+        $headers = @{
+          "User-Agent"             = "PowerShell"
+          "Authorization"          = "Bearer $env:GITHUB_TOKEN"
+          "Accept"                 = "application/vnd.github+json"
+          "X-GitHub-Api-Version"   = "2022-11-28"
+        }
 
-        $tagName = $response.tag_name
-        Add-Content -Path $env:GITHUB_OUTPUT -Value "latest_tag=$tagName"
+        $uri = "https://api.github.com/repos/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest"
+
+        $maxRetries = 5
+        $delay = 2
+        for ($i=1; $i -le $maxRetries; $i++) {
+          try {
+            $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET -TimeoutSec 30
+            $tagName = $response.tag_name
+            if (-not $tagName) { throw "Empty tag_name in response." }
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "latest_tag=$tagName"
+            break
+          } catch {
+            if ($i -eq $maxRetries) { throw }
+            # Exponential backoff on known transient/rate-limited responses
+            Start-Sleep -Seconds $delay
+            $delay = [Math]::Min($delay * 2, 30)
+          }
+        }
 
     - name: Read last processed version if exists
       id: read_version
