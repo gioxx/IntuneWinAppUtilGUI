@@ -2,46 +2,95 @@
 # Show the main GUI window and handle all events.
 function Show-IntuneWinAppUtilGUI {
     [CmdletBinding()]
-    param ()
+    param (
+        [Parameter(Mandatory = $false, HelpMessage = "Show diagnostic information")][switch] $Diag
+    )
 
-    $moduleRoot = Split-Path -Path $PSScriptRoot -Parent
-    $configPath = Join-Path -Path $env:APPDATA -ChildPath "IntuneWinAppUtilGUI\config.json"
-    $xamlPath = Join-Path $moduleRoot 'UI\UI.xaml'
-    $iconPath = Join-Path $moduleRoot 'Assets\Intune.ico'
-    $iconPngPath = Join-Path $moduleRoot 'Assets\Intune.png'
+    $moduleRoot   = Split-Path -Path $PSScriptRoot -Parent
+    $configPath   = Join-Path -Path $env:APPDATA -ChildPath "IntuneWinAppUtilGUI\config.json"
+    $xamlPath     = Join-Path $moduleRoot 'UI\UI.xaml'
+    $iconPath     = Join-Path $moduleRoot 'Assets\Intune.ico'
+    $iconPngPath  = Join-Path $moduleRoot 'Assets\Intune.png'
 
     if (-not (Test-Path $xamlPath)) {
         Write-Error "XAML file not found: $xamlPath"
         return
     }
 
-    $xaml = Get-Content $xamlPath -Raw
+    # Relaunch in STA if needed
+    if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
+        $modulePath = $MyInvocation.MyCommand.Module.Path
+        $shell = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
+        Start-Process $shell -ArgumentList @(
+            '-NoProfile',
+            '-STA',
+            '-Command', "Import-Module `"$modulePath`"; Show-IntuneWinAppUtilGUI"
+        ) | Out-Null
+        return
+    }
+
+    if ($Diag) {
+        # Diagnostics: print handles/memory when the GUI starts
+        try {
+            $p = Get-Process -Id $PID
+            Write-Verbose ("[Diagnostics/Start] Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p.HandleCount, $p.GDIHandles, ($p.WorkingSet64/1KB)) -Verbose
+            Write-Verbose "This PowerShell process will be available again when IntuneWinAppUtil GUI closes." -Verbose
+        } catch { }
+    }
+
+    # Prefer software rendering to avoid GPU/driver glitches
+    try { [System.Windows.Media.RenderOptions]::ProcessRenderMode = [System.Windows.Interop.RenderMode]::SoftwareOnly } catch { }
+
+    # Ensure there is a single Application for the whole PowerShell session
+    $app = [System.Windows.Application]::Current
+    if (-not $app) {
+        $app = New-Object System.Windows.Application
+        # Keep the dispatcher alive between runs
+        $app.ShutdownMode = 'OnExplicitShutdown'
+    }
+
+    # Register global WPF dispatcher handler only once
+    if (-not $app.Resources.Contains('IntuneGUI_HandlersRegistered')) {
+        $app.add_DispatcherUnhandledException({
+            param($evtSender, $e)
+            [System.Windows.MessageBox]::Show(
+                "Unexpected UI error:`n$($e.Exception.Message)",
+                "UI Error",
+                [System.Windows.MessageBoxButton]::OK,
+                [System.Windows.MessageBoxImage]::Error
+            )
+            $e.Handled = $true
+        })
+        $null = $app.Resources.Add('IntuneGUI_HandlersRegistered', $true)
+    }
+
+    # Parse XAML and get the main window
+    $xaml   = Get-Content $xamlPath -Raw
     $window = [Windows.Markup.XamlReader]::Parse($xaml)
 
-    $SourceFolder = $window.FindName("SourceFolder")
-    $SetupFile = $window.FindName("SetupFile")
-    $OutputFolder = $window.FindName("OutputFolder")
+    # Grab controls
+    $SourceFolder    = $window.FindName("SourceFolder")
+    $SetupFile       = $window.FindName("SetupFile")
+    $OutputFolder    = $window.FindName("OutputFolder")
 
-    $ToolPathBox = $window.FindName("ToolPathBox")
-    $ToolVersion = $window.FindName("ToolVersion")
+    $ToolPathBox     = $window.FindName("ToolPathBox")
     $ToolVersionText = $window.FindName("ToolVersionText")
-    $ToolVersionLink = $window.FindName("ToolVersionLink")
-    $DownloadTool = $window.FindName("DownloadTool")
+    $DownloadTool    = $window.FindName("DownloadTool")
     
-    $FinalFilename = $window.FindName("FinalFilename")
+    $FinalFilename   = $window.FindName("FinalFilename")
     
-    $BrowseSource = $window.FindName("BrowseSource")
-    $BrowseSetup = $window.FindName("BrowseSetup")
-    $BrowseOutput = $window.FindName("BrowseOutput")
-    $BrowseTool = $window.FindName("BrowseTool")
+    $BrowseSource    = $window.FindName("BrowseSource")
+    $BrowseSetup     = $window.FindName("BrowseSetup")
+    $BrowseOutput    = $window.FindName("BrowseOutput")
+    $BrowseTool      = $window.FindName("BrowseTool")
     
-    $RunButton = $window.FindName("RunButton")
-    $ClearButton = $window.FindName("ClearButton")
-    $ExitButton = $window.FindName("ExitButton")
+    $RunButton       = $window.FindName("RunButton")
+    $ClearButton     = $window.FindName("ClearButton")
+    $ExitButton      = $window.FindName("ExitButton")
 
     # When user types/pastes the source path manually, try to auto-suggest the setup file if found.
     $SourceFolder.Add_TextChanged({
-        param($sender, $e)
+        param($evtSender, $e)
         $src = $SourceFolder.Text.Trim()
         if ($src) { Set-SetupFromSource -SourcePath $src -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename }
     })
@@ -57,58 +106,72 @@ function Show-IntuneWinAppUtilGUI {
         } catch {}
     }
 
-    # Browse for Source Folder
+    # Browse for Source Folder (dispose dialog via finally)
     $BrowseSource.Add_Click({
         $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-        if ($dialog.ShowDialog() -eq 'OK') {
-            $SourceFolder.Text = $dialog.SelectedPath
-            # Auto-suggest Invoke-AppDeployToolkit.exe when present in the selected source
-            Set-SetupFromSource -SourcePath $dialog.SelectedPath -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename
+        try {
+            if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                $SourceFolder.Text = $dialog.SelectedPath
+                Set-SetupFromSource -SourcePath $dialog.SelectedPath -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename
+            }
+        } finally {
+            $dialog.Dispose()
         }
     })
 
     # Browse for Setup File
     $BrowseSetup.Add_Click({
         $dialog = New-Object System.Windows.Forms.OpenFileDialog
-        $dialog.Filter = "Executable or MSI (*.exe;*.msi)|*.exe;*.msi"
-        if ($dialog.ShowDialog() -eq 'OK') {
-            $selectedPath = $dialog.FileName
-            $sourceRoot = $SourceFolder.Text.Trim()
+        try {
+            $dialog.Filter = "Executable or MSI (*.exe;*.msi)|*.exe;*.msi"
+            if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                $selectedPath = $dialog.FileName
+                $sourceRoot   = $SourceFolder.Text.Trim()
 
-            if (-not [string]::IsNullOrWhiteSpace($sourceRoot) -and (Test-Path $sourceRoot)) {
-                try {
-                    $relativePath = Get-RelativePath -BasePath $sourceRoot -TargetPath $selectedPath
-                    if (-not ($relativePath.StartsWith(".."))) {
-                        $SetupFile.Text = $relativePath # File is inside source folder or subdir
-                    } else {
-                        $SetupFile.Text = $selectedPath # Outside of source folder
+                if (-not [string]::IsNullOrWhiteSpace($sourceRoot) -and (Test-Path $sourceRoot)) {
+                    try {
+                        $relativePath = Get-RelativePath -BasePath $sourceRoot -TargetPath $selectedPath
+                        if (-not ($relativePath.StartsWith(".."))) {
+                            $SetupFile.Text = $relativePath
+                        } else {
+                            $SetupFile.Text = $selectedPath
+                        }
+                    } catch {
+                        $SetupFile.Text = $selectedPath
                     }
-                } catch {
-                    $SetupFile.Text = $selectedPath # If relative path fails (e.g. bad format), fallback
+                } else {
+                    $SourceFolder.Text = Split-Path $selectedPath -Parent
+                    $SetupFile.Text    = [System.IO.Path]::GetFileName($selectedPath)
                 }
-            # } else {
-            #     $SetupFile.Text = $selectedPath # Source folder not set or invalid, fallback
-            # }
-            } else {
-                $SourceFolder.Text = Split-Path $selectedPath -Parent # Source folder not set or invalid -> infer it from the selected setup path
-                $SetupFile.Text = [System.IO.Path]::GetFileName($selectedPath) # Store only the file name in SetupFile so it is relative to SourceFolder
             }
+        } finally {
+            $dialog.Dispose()
         }
     })
 
     # Browse for Output Folder
     $BrowseOutput.Add_Click({
-        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-        if ($dlg.ShowDialog() -eq 'OK') { $OutputFolder.Text = $dlg.SelectedPath }
+        $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+        try {
+            if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                $OutputFolder.Text = $dialog.SelectedPath
+            }
+        } finally {
+            $dialog.Dispose()
+        }
     })
 
     # Browse for IntuneWinAppUtil.exe
     $BrowseTool.Add_Click({
-        $dlg = New-Object System.Windows.Forms.OpenFileDialog
-        $dlg.Filter = "IntuneWinAppUtil.exe|IntuneWinAppUtil.exe"
-        if ($dlg.ShowDialog() -eq 'OK') {
-            $ToolPathBox.Text = $dlg.FileName
-            Show-ToolVersion -Path $dlg.FileName -Target $ToolVersionText
+        $dialog = New-Object System.Windows.Forms.OpenFileDialog
+        try {
+            $dialog.Filter = "IntuneWinAppUtil.exe|IntuneWinAppUtil.exe"
+            if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                $ToolPathBox.Text = $dialog.FileName
+                Show-ToolVersion -Path $dialog.FileName -Target $ToolVersionText
+            }
+        } finally {
+            $dialog.Dispose()
         }
     })
 
@@ -145,7 +208,7 @@ function Show-IntuneWinAppUtilGUI {
 
     # When user types/pastes the tool path manually, show version if valid
     $ToolPathBox.Add_TextChanged({
-        param($sender, $e)
+        param($evtSender, $e)
         $p = $ToolPathBox.Text.Trim()
         if ($p) { Show-ToolVersion -Path $p -Target $ToolVersionText } else { Show-ToolVersion -Path $null -Target $ToolVersionText }
     })
@@ -153,6 +216,7 @@ function Show-IntuneWinAppUtilGUI {
     # If the user typed/pasted an absolute setup path before setting SourceFolder,
     # infer SourceFolder from that path and convert SetupFile to a relative file name.
     $SetupFile.Add_LostFocus({
+        param($evtSender, $e)
         $sText = $SetupFile.Text.Trim()
         # Only act if SourceFolder is empty and SetupFile looks like an absolute existing path
         if ([string]::IsNullOrWhiteSpace($SourceFolder.Text) -and
@@ -161,7 +225,7 @@ function Show-IntuneWinAppUtilGUI {
             (Test-Path $sText)) {
 
             $SourceFolder.Text = Split-Path $sText -Parent
-            $SetupFile.Text = [System.IO.Path]::GetFileName($sText)
+            $SetupFile.Text    = [System.IO.Path]::GetFileName($sText)
             # Note: SourceFolder.Text change will NOT override SetupFile because Set-SetupFromSource
             # early-returns if SetupFile already points to an existing file (absolute or relative).
         }
@@ -170,9 +234,9 @@ function Show-IntuneWinAppUtilGUI {
     # Run button: validate inputs, run IntuneWinAppUtil.exe, rename output if needed
     $RunButton.Add_Click({
         $c = $SourceFolder.Text.Trim() # Source folder
-        $s = $SetupFile.Text.Trim() # Setup file (relative or absolute)
+        $s = $SetupFile.Text.Trim()    # Setup file (relative or absolute)
         $o = $OutputFolder.Text.Trim() # Output folder
-        $f = $FinalFilename.Text.Trim() # Final filename
+        $f = $FinalFilename.Text.Trim()# Final filename
 
         # Clean FinalFilename from invalid chars
         $f = -join ($f.ToCharArray() | Where-Object { [System.IO.Path]::GetInvalidFileNameChars() -notcontains $_ })
@@ -235,7 +299,7 @@ function Show-IntuneWinAppUtilGUI {
         # -c = source folder, -s = setup file (EXE/MSI), -o = output folder.
         $iwaArgs = ('-c "{0}" -s "{1}" -o "{2}"' -f $c, $s, $o)
 
-        # Launch IntuneWinAppUtil.exe, wait, and capture exit code (WorkingDirectory is set to the tool's folder to avoid relative path issues)
+        # Launch IntuneWinAppUtil.exe
         try {
             $proc = Start-Process -FilePath $toolPath `
                 -ArgumentList $iwaArgs `
@@ -251,7 +315,6 @@ function Show-IntuneWinAppUtilGUI {
         }
         $proc.WaitForExit()
 
-        # Fail early if tool returned non-zero
         if ($proc.ExitCode -ne 0) {
             [System.Windows.MessageBox]::Show(
                 "IntuneWinAppUtil exited with code $($proc.ExitCode).",
@@ -260,8 +323,7 @@ function Show-IntuneWinAppUtilGUI {
             return
         }
 
-        # Wait a bit for the output file to appear (up to 10 seconds, checking every 250ms)
-        # Compute the default output filename that IntuneWinAppUtil generates. By default it matches the setup's base name + ".intunewin".
+        # Wait for the output file to appear (up to 10 seconds)
         $defaultName = [System.IO.Path]::GetFileNameWithoutExtension($s) + ".intunewin"
         $defaultPath = Join-Path $o $defaultName
 
@@ -273,13 +335,11 @@ function Show-IntuneWinAppUtilGUI {
         }
 
         if (Test-Path $defaultPath) {
-            # Build desired name from $f (if any), ensuring exactly one ".intunewin":
-            # - If FinalFilename ($f) is blank, fallback to using the source folder name.
-            # - Otherwise use the provided FinalFilename.
+            # Build desired name from $f (if any), ensuring exactly one ".intunewin"
             if ([string]::IsNullOrWhiteSpace($f)) {
                 $desiredName = (Split-Path $c -Leaf) + ".intunewin"
             } else {
-                $extF = [System.IO.Path]::GetExtension($f).ToLowerInvariant()
+                $extF  = [System.IO.Path]::GetExtension($f).ToLowerInvariant()
                 $baseF = if ($extF -eq ".intunewin") { [System.IO.Path]::GetFileNameWithoutExtension($f) } else { $f }
                 $desiredName = $baseF + ".intunewin"
             }
@@ -287,10 +347,9 @@ function Show-IntuneWinAppUtilGUI {
             $newName = $desiredName
 
             try {
-                # Prepare collision-safe rename:
-                # If a file with the desired name already exists, append _1, _2, ... until unique.
+                # Collision-safe rename (_1, _2, ...)
                 $baseName = [System.IO.Path]::GetFileNameWithoutExtension($newName)
-                $ext = [System.IO.Path]::GetExtension($newName)
+                $ext      = [System.IO.Path]::GetExtension($newName)
                 $finalName = $newName
                 $counter = 1
 
@@ -299,11 +358,9 @@ function Show-IntuneWinAppUtilGUI {
                     $counter++
                 }
 
-                # Perform the rename operation from the tool's default output to our final target name.
                 Rename-Item -Path $defaultPath -NewName $finalName -Force
                 $fullPath = Join-Path $o $finalName
 
-                # Inform the user and optionally offer to open File Explorer with the file selected.
                 $msg = "Package created and renamed to:`n$finalName"
                 if ($finalName -ne $newName) {
                     $msg += "`n(Note: original name '$newName' already existed.)"
@@ -317,19 +374,19 @@ function Show-IntuneWinAppUtilGUI {
                     [System.Windows.MessageBoxImage]::Information
                 )
 
-                if ($resp -eq "Yes") {
-                    Start-Process explorer.exe "/select,`"$fullPath`"" # Open Explorer with the new file pre-selected.
+                if ($resp -eq [System.Windows.MessageBoxResult]::Yes) {
+                    Start-Process explorer.exe "/select,`"$fullPath`""
                 }
 
             } catch {
-                [System.Windows.MessageBox]::Show("Renaming failed: $($_.Exception.Message)", "Warning", "OK", "Warning") # If anything goes wrong during the rename, show a warning.
+                [System.Windows.MessageBox]::Show("Renaming failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
             }
 
         } else {
             [System.Windows.MessageBox]::Show(
                 "Output file not found:`n$defaultPath",
                 "Warning", "OK", "Warning"
-            ) # The expected output was not found; warn the user (the tool may have failed).
+            )
         }
     })
 
@@ -348,10 +405,10 @@ function Show-IntuneWinAppUtilGUI {
 
     # Keyboard shortcuts: Esc to exit (with confirmation), Enter to run packaging
     $window.Add_KeyDown({
-        param($sender, $e)
+        param($evtSender, $e)
         switch ($e.Key) {
             'Escape' {
-                if ([System.Windows.MessageBox]::Show("Exit the tool?", "Confirm", "YesNo", "Question") -eq "Yes") {
+                if ([System.Windows.MessageBox]::Show("Exit the tool?", "Confirm", "YesNo", "Question") -eq [System.Windows.MessageBoxResult]::Yes) {
                     $window.Close()
                 }
             }
@@ -363,11 +420,13 @@ function Show-IntuneWinAppUtilGUI {
 
     # When the window is closed, save the ToolPath to config.json
     $window.Add_Closed({
-        if (-not (Test-Path (Split-Path $configPath))) {
-            New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
-        }
-        $cfg = @{ ToolPath = $ToolPathBox.Text.Trim() }
-        $cfg | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
+        try {
+            if (-not (Test-Path (Split-Path $configPath))) {
+                New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
+            }
+            $cfg = @{ ToolPath = $ToolPathBox.Text.Trim() }
+            $cfg | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
+        } catch { }
     })
 
     # Set window icon if available
@@ -375,29 +434,44 @@ function Show-IntuneWinAppUtilGUI {
         $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create((New-Object System.Uri $iconPath, [System.UriKind]::Absolute))
     }
 
-    # Find the Image control in XAML and load the PNG from disk and assign it to the Image.Source
+    # Load PNG header icon without locking the file
     $HeaderIcon = $window.FindName('HeaderIcon')
     if ($HeaderIcon -and (Test-Path $iconPngPath)) {
-        # Use BitmapImage with OnLoad so the file is not locked after loading
         $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
         $bmp.BeginInit()
         $bmp.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
         $bmp.UriSource = [Uri]::new($iconPngPath, [UriKind]::Absolute)
         $bmp.EndInit()
-
         $HeaderIcon.Source = $bmp
     }
 
-    # Hyperlink in the ToolVersionText to open the GitHub version history page (and other links if needed)
-    $window.AddHandler([
-        System.Windows.Documents.Hyperlink]::RequestNavigateEvent,
-        [System.Windows.Navigation.RequestNavigateEventHandler] {
-            param($sender, $e)
+    # Hyperlink navigate handler (handles any Hyperlink in the XAML)
+    $window.AddHandler(
+        [System.Windows.Documents.Hyperlink]::RequestNavigateEvent,
+        [System.Windows.Navigation.RequestNavigateEventHandler]{
+            param($evtSender, $e)
             Start-Process $e.Uri.AbsoluteUri
             $e.Handled = $true
-        })
+        }
+    )
     
+    # Show the window (modal)
     $window.ShowDialog() | Out-Null
+
+    # Proactively release WPF/GDI/USER resources after window closes
+    try {
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+        [System.GC]::Collect()
+    } catch { }
+
+    if ($Diag) {
+        # Diagnostics: print handles/memory after the GUI closes
+        try {
+            $p2 = Get-Process -Id $PID
+            Write-Verbose ("[Diagnostics/End]   Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p2.HandleCount, $p2.GDIHandles, ($p2.WorkingSet64/1KB)) -Verbose
+        } catch { }
+    }
 }
 
 Export-ModuleMember -Function Show-IntuneWinAppUtilGUI
