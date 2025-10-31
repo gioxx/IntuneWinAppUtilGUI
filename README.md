@@ -14,7 +14,7 @@ This tool simplifies the packaging of Win32 apps for Microsoft Intune by providi
 ## 🔧 Features
 
 - Built with **WPF** (XAML) and **PowerShell** — no external dependencies.
-- Automatically stores tool path and reuses it on next launch (saved in a JSON file, check ["Configuration file"](#%EF%B8%8F-configuration-file)).
+- Automatically stores tool path and reuses it on next launch (saved in a JSON file, check "[Configuration file](#%EF%B8%8F-configuration-file)").
 - Graphical interface for all required options (`-c`, `-s`, `-o`).
 - **Auto-download** of the latest version of `IntuneWinAppUtil.exe` from GitHub (optional).
 - It detects the use of PSAppDeployToolkit and automatically proposes executable file and final IntuneWin package name.
