@@ -38,7 +38,7 @@ Once published, you'll be able to install via:
 
 ```powershell
 Install-Module IntuneWinAppUtilGUI -Scope CurrentUser
-Show-IntuneWinAppUtilGui
+Show-IntuneWinAppUtilGUI
 ```
 
 ### Method 2: Clone or Download
@@ -53,7 +53,7 @@ Show-IntuneWinAppUtilGui
 3. Then launch the tool with:
 
     ```powershell
-     Show-IntuneWinAppUtilGui
+     Show-IntuneWinAppUtilGUI
     ```
 
 > 💡 Tip: you can add the module path to your `$env:PSModulePath` if you want to make it persist and available system-wide.
