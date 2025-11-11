@@ -24,6 +24,7 @@
 - Bugfix: Delisted 1.0.4 from PowerShell Gallery and added again Show-IntuneWinAppUtilGUI to available commands.
 - Bugfix: Removed any reference to ZIP uploads as setup files.
 - Bugfix: Fixed PS 5.1 incompatibility in relative-path resolution ([System.IO.Path]::GetRelativePath is PS 7+).
+- Bugfix: Final filename (of IntuneWin package) is proposed also if AppVersion is not specified in Invoke-AppDeployToolkit.ps1.
 - Improved: Code cleanup, removed redundant GitHub download logic; refactoring.
 - Improved: Validates setup file existence and type.
 - Improved: Tries to create output folder when missing.
