@@ -53,6 +53,12 @@
                     <TextBox Name="SourceFolder" Grid.Column="0" Margin="0,0,10,0" Padding="4"/>
                     <Button Name="BrowseSource" Content="Browse..." Grid.Column="1" Width="80" Padding="2"/>
                 </Grid>
+                <TextBlock Name="SourceFolderPathLength"
+                           Text="Path length: 0/260"
+                           Foreground="Gray"
+                           FontSize="11"
+                           Margin="0,4,0,0"
+                           Visibility="Collapsed"/>
             </StackPanel>
 
             <!-- Setup File -->
@@ -86,6 +92,12 @@
                     <TextBox Name="OutputFolder" Grid.Column="0" Margin="0,0,10,0" Padding="4"/>
                     <Button Name="BrowseOutput" Content="Browse..." Grid.Column="1" Width="80" Padding="2"/>
                 </Grid>
+                <TextBlock Name="OutputFolderPathLength"
+                           Text="Path length: 0/260"
+                           Foreground="Gray"
+                           FontSize="11"
+                           Margin="0,4,0,0"
+                           Visibility="Collapsed"/>
             </StackPanel>
 
             <!-- Tool Path -->
@@ -149,7 +161,7 @@
 
             <!-- Info tooltip -->
             <TextBlock Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
-            Text="⚠️ Source folder, setup file and output folder are required (*).&#x0a;ℹ️ Final filename is optional and used for renaming the .intunewin file. If not provided, the tool will generate a name based on the source folder.&#x0a;ℹ️ IntuneWinAppUtil Path is also optional. If not provided, the tool will automatically download the latest version from GitHub.&#x0a;&#x0a;Press ESC on the keyboard to close the application.&#x0a;Click on 'Run' button or press ENTER on the keyboard to execute the IntuneWinAppUtil with the provided parameters."
+            Text="⚠️ Source folder, setup file and output folder are required (*).&#x0a;ℹ️ The Source folder path length shown above is indicative; the final check runs at packaging time (Run) and considers the longest file path.&#x0a;ℹ️ Final filename is optional and used for renaming the .intunewin file. If not provided, the tool will generate a name based on the source folder.&#x0a;ℹ️ IntuneWinAppUtil Path is also optional. If not provided, the tool will automatically download the latest version from GitHub.&#x0a;&#x0a;Press ESC on the keyboard to close the application.&#x0a;Click on 'Run' button or press ENTER on the keyboard to execute the IntuneWinAppUtil with the provided parameters."
             Foreground="Gray" FontSize="12" Margin="0,20,0,0" TextWrapping="Wrap"/>
 
             <!-- GitHub Link -->
