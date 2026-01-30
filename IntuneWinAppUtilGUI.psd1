@@ -24,6 +24,8 @@
 - Improved: Live Source/Output path length indicators.
 - Improved: On Run, warns if the longest file path under Source exceeds Windows limits, showing the longest path found.
 - Improved: Added UI note clarifying that Source path length is indicative and final check runs at packaging time.
+- Improved: Optional update check against PowerShell Gallery with UI banner.
+- Improved: Added -ShowVersion / -ForceUpdateBanner switches for update-banner testing.
 '@
         }
     }
