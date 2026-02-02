@@ -21,11 +21,13 @@ function Show-IntuneWinAppUtilGUI {
     if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
         $modulePath = $MyInvocation.MyCommand.Module.Path
         $shell = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
+        $cmd = "Import-Module `"$modulePath`"; Show-IntuneWinAppUtilGUI"
+        if ($PSBoundParameters.ContainsKey('Debug')) { $cmd += " -Debug" }
         Start-Process $shell -ArgumentList @(
             '-NoProfile',
             '-STA',
-            '-Command', "Import-Module `"$modulePath`"; Show-IntuneWinAppUtilGUI"
-        ) | Out-Null
+            '-Command', $cmd
+        ) -NoNewWindow | Out-Null
         return
     }
 
@@ -72,6 +74,8 @@ function Show-IntuneWinAppUtilGUI {
     $SourceFolder    = $window.FindName("SourceFolder")
     $SetupFile       = $window.FindName("SetupFile")
     $OutputFolder    = $window.FindName("OutputFolder")
+    $SourceFolderPathLength = $window.FindName("SourceFolderPathLength")
+    $OutputFolderPathLength = $window.FindName("OutputFolderPathLength")
 
     $ToolPathBox     = $window.FindName("ToolPathBox")
     $ToolVersionText = $window.FindName("ToolVersionText")
@@ -88,11 +92,17 @@ function Show-IntuneWinAppUtilGUI {
     $ClearButton     = $window.FindName("ClearButton")
     $ExitButton      = $window.FindName("ExitButton")
 
+    $PathLengthLimit = 260
+
+    Update-PathLengthIndicator -PathText $SourceFolder.Text -Indicator $SourceFolderPathLength -Limit $PathLengthLimit
+    Update-PathLengthIndicator -PathText $OutputFolder.Text -Indicator $OutputFolderPathLength -Limit $PathLengthLimit
+
     # When user types/pastes the source path manually, try to auto-suggest the setup file if found.
     $SourceFolder.Add_TextChanged({
         param($evtSender, $e)
         $src = $SourceFolder.Text.Trim()
         if ($src) { Set-SetupFromSource -SourcePath $src -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename }
+        Update-PathLengthIndicator -PathText $SourceFolder.Text -Indicator $SourceFolderPathLength -Limit $PathLengthLimit
     })
 
     # Preload config.json if it exists
@@ -112,7 +122,6 @@ function Show-IntuneWinAppUtilGUI {
         try {
             if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 $SourceFolder.Text = $dialog.SelectedPath
-                Set-SetupFromSource -SourcePath $dialog.SelectedPath -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename
             }
         } finally {
             $dialog.Dispose()
@@ -159,6 +168,11 @@ function Show-IntuneWinAppUtilGUI {
         } finally {
             $dialog.Dispose()
         }
+    })
+
+    $OutputFolder.Add_TextChanged({
+        param($evtSender, $e)
+        Update-PathLengthIndicator -PathText $OutputFolder.Text -Indicator $OutputFolderPathLength -Limit $PathLengthLimit
     })
 
     # Browse for IntuneWinAppUtil.exe
@@ -278,6 +292,27 @@ function Show-IntuneWinAppUtilGUI {
         } catch {
             [System.Windows.MessageBox]::Show("Invalid path format: $($_.Exception.Message)", "Error", "OK", "Error")
             return
+        }
+
+        $pathWarnings = @()
+        if ($c.Length -gt $PathLengthLimit) { $pathWarnings += "Source folder: $($c.Length)/$PathLengthLimit" }
+        $maxFileInfo = Get-MaxFilePathInfo -RootPath $c
+        if ($null -ne $maxFileInfo -and $maxFileInfo.Length -gt $PathLengthLimit) {
+            $pathWarnings += "Max file path in source: $($maxFileInfo.Length)/$PathLengthLimit"
+            $pathWarnings += "Longest path: $($maxFileInfo.Path)"
+        }
+        if ($o.Length -gt $PathLengthLimit) { $pathWarnings += "Output folder: $($o.Length)/$PathLengthLimit" }
+        if ($pathWarnings.Count -gt 0) {
+            $msg = "One or more paths exceed $PathLengthLimit characters.`n`n" +
+                   ($pathWarnings -join "`n") +
+                   "`n`nThis can cause IntuneWinAppUtil to fail on Windows.`nProceed anyway?"
+            $confirm = [System.Windows.MessageBox]::Show(
+                $msg,
+                "Path length warning",
+                [System.Windows.MessageBoxButton]::YesNo,
+                [System.Windows.MessageBoxImage]::Warning
+            )
+            if ($confirm -ne [System.Windows.MessageBoxResult]::Yes) { return }
         }
 
         # IntuneWinAppUtil.exe path check (or initialize/download if not set)
