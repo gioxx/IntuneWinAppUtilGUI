@@ -3,7 +3,9 @@
 function Show-IntuneWinAppUtilGUI {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $false, HelpMessage = "Show diagnostic information")][switch] $Diag
+        [Parameter(Mandatory = $false, HelpMessage = "Show diagnostic information")][switch] $Diag,
+        [Parameter(Mandatory = $false, HelpMessage = "Show installed and latest module versions")][switch] $ShowVersion,
+        [Parameter(Mandatory = $false, HelpMessage = "Force update banner for testing")][switch] $ForceUpdateBanner
     )
 
     $moduleRoot   = Split-Path -Path $PSScriptRoot -Parent
@@ -76,6 +78,7 @@ function Show-IntuneWinAppUtilGUI {
     $OutputFolder    = $window.FindName("OutputFolder")
     $SourceFolderPathLength = $window.FindName("SourceFolderPathLength")
     $OutputFolderPathLength = $window.FindName("OutputFolderPathLength")
+    $UpdateAvailableText = $window.FindName("UpdateAvailableText")
 
     $ToolPathBox     = $window.FindName("ToolPathBox")
     $ToolVersionText = $window.FindName("ToolVersionText")
@@ -105,6 +108,8 @@ function Show-IntuneWinAppUtilGUI {
         Update-PathLengthIndicator -PathText $SourceFolder.Text -Indicator $SourceFolderPathLength -Limit $PathLengthLimit
     })
 
+    $updateCheckEnabled = $true
+
     # Preload config.json if it exists
     if (Test-Path $configPath) {
         try {
@@ -112,6 +117,9 @@ function Show-IntuneWinAppUtilGUI {
             if ($cfg.ToolPath -and (Test-Path $cfg.ToolPath)) {
                 $ToolPathBox.Text = $cfg.ToolPath
                 Show-ToolVersion -Path $cfg.ToolPath -Target $ToolVersionText
+            }
+            if ($null -ne $cfg.UpdateCheckEnabled) {
+                $updateCheckEnabled = [bool]$cfg.UpdateCheckEnabled
             }
         } catch {}
     }
@@ -127,6 +135,78 @@ function Show-IntuneWinAppUtilGUI {
             $dialog.Dispose()
         }
     })
+
+    $updateCheckJob = $null
+    $updateCheckTimer = $null
+
+    $shouldCheckUpdates = ($updateCheckEnabled -or $ShowVersion) -and $UpdateAvailableText
+
+    if ($shouldCheckUpdates) {
+        $currentVersion = $MyInvocation.MyCommand.Module.Version
+        if ($ForceUpdateBanner) { $currentVersion = [version]'1.0.0' }
+        $modulePath = $MyInvocation.MyCommand.Module.Path
+        $moduleName = 'IntuneWinAppUtilGUI'
+        $timeoutSeconds = 10
+
+        $updateCheckJob = Start-Job -ArgumentList $modulePath, $moduleName, $currentVersion, $timeoutSeconds, [bool]$ShowVersion -ScriptBlock {
+            param($modulePath, $moduleName, $currentVersion, $timeoutSeconds, $showVersion)
+            $moduleRoot = Split-Path $modulePath -Parent
+            $helperPath = Join-Path $moduleRoot 'Private\Get-PowerShellGalleryModuleVersion.ps1'
+            if (Test-Path $helperPath) {
+                . $helperPath
+            } else {
+                if ($showVersion) {
+                    return [PSCustomObject]@{
+                        Current = $currentVersion
+                        Latest  = $null
+                        Error   = "Helper not found: $helperPath"
+                    }
+                }
+                return $null
+            }
+            $result = Get-PowerShellGalleryModuleVersion -ModuleName $moduleName -TimeoutSeconds $timeoutSeconds -Detailed
+            $latest = $result.Latest
+            $errMsg = $result.Error
+            if ($showVersion) {
+                return [PSCustomObject]@{
+                    Current = $currentVersion
+                    Latest  = $latest
+                    Error   = $errMsg
+                }
+            }
+            if ($latest -and ($latest -gt $currentVersion)) { return $latest }
+        }
+
+        $updateCheckTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $updateCheckTimer.Interval = [TimeSpan]::FromMilliseconds(300)
+        $updateCheckTimer.Add_Tick({
+            if (-not $updateCheckJob) { $updateCheckTimer.Stop(); return }
+            if ($updateCheckJob.State -in @('Completed','Failed','Stopped')) {
+                $updateCheckTimer.Stop()
+                $latest = $null
+                try { $latest = Receive-Job $updateCheckJob -ErrorAction SilentlyContinue } catch { }
+                try { Remove-Job $updateCheckJob -Force -ErrorAction SilentlyContinue } catch { }
+                $updateCheckJob = $null
+
+                if ($ForceUpdateBanner) {
+                    $UpdateAvailableText.Text = "Update available: $($latest.Latest) (run 'Update-Module IntuneWinAppUtilGUI' in your PowerShell session)"
+                    $UpdateAvailableText.Visibility = [System.Windows.Visibility]::Visible
+                } elseif ($ShowVersion) {
+                    $latestText = if ($latest -and $latest.Latest) { $latest.Latest } else { 'unknown' }
+                    if ($latest -and $latest.Error) {
+                        $UpdateAvailableText.Text = "Installed: $($latest.Current) | Latest: $latestText (error: $($latest.Error))"
+                    } else {
+                        $UpdateAvailableText.Text = "Installed: $($latest.Current) | Latest: $latestText"
+                    }
+                    $UpdateAvailableText.Visibility = [System.Windows.Visibility]::Visible
+                } elseif ($latest -is [version]) {
+                    $UpdateAvailableText.Text = "Update available: $latest (run 'Update-Module IntuneWinAppUtilGUI' in your PowerShell session)"
+                    $UpdateAvailableText.Visibility = [System.Windows.Visibility]::Visible
+                }
+            }
+        })
+        $updateCheckTimer.Start()
+    }
 
     # Browse for Setup File
     $BrowseSetup.Add_Click({
@@ -456,10 +536,15 @@ function Show-IntuneWinAppUtilGUI {
     # When the window is closed, save the ToolPath to config.json
     $window.Add_Closed({
         try {
+            if ($updateCheckTimer) { $updateCheckTimer.Stop() }
+            if ($updateCheckJob) { Remove-Job $updateCheckJob -Force -ErrorAction SilentlyContinue }
             if (-not (Test-Path (Split-Path $configPath))) {
                 New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
             }
-            $cfg = @{ ToolPath = $ToolPathBox.Text.Trim() }
+            $cfg = @{
+                ToolPath = $ToolPathBox.Text.Trim()
+                UpdateCheckEnabled = $updateCheckEnabled
+            }
             $cfg | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
         } catch { }
     })

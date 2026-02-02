@@ -11,16 +11,24 @@
 
         <!-- ===== Header ===== -->
         <Border DockPanel.Dock="Top" Padding="0,0,0,12">
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Image Name="HeaderIcon" Width="28" Height="28" Margin="0,0,8,0"/>
-                <TextBlock Text="IntuneWinAppUtil GUI"
-                           FontSize="24" FontWeight="Bold"
-                           VerticalAlignment="Center"
-                           TextOptions.TextFormattingMode="Ideal"
-                           TextOptions.TextRenderingMode="ClearType"/>
-                <!-- <TextBlock Text="  ·  1.0.0"
-                           FontSize="18" Foreground="Gray"
-                           VerticalAlignment="Center" Margin="6,2,0,0"/> -->
+            <StackPanel Orientation="Vertical">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Image Name="HeaderIcon" Width="28" Height="28" Margin="0,0,8,0"/>
+                    <TextBlock Text="IntuneWinAppUtil GUI"
+                               FontSize="24" FontWeight="Bold"
+                               VerticalAlignment="Center"
+                               TextOptions.TextFormattingMode="Ideal"
+                               TextOptions.TextRenderingMode="ClearType"/>
+                    <!-- <TextBlock Text="  ·  1.0.0"
+                               FontSize="18" Foreground="Gray"
+                               VerticalAlignment="Center" Margin="6,2,0,0"/> -->
+                </StackPanel>
+                <TextBlock Name="UpdateAvailableText"
+                           Text=""
+                           Foreground="Gray"
+                           FontSize="12"
+                           Margin="36,4,0,0"
+                           Visibility="Collapsed"/>
             </StackPanel>
         </Border>
         <!-- ===== End Header ===== -->

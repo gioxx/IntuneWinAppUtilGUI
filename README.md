@@ -19,13 +19,15 @@ This tool simplifies the packaging of Win32 apps for Microsoft Intune by providi
 - **Auto-download** of the latest version of `IntuneWinAppUtil.exe` from GitHub (optional).
 - It detects the use of PSAppDeployToolkit and automatically proposes executable file and final IntuneWin package name.
 - Sanitizes invalid characters from the output filename.
+- Live path length indicator for Source/Output folders, with a final max-path check at Run time.
+- Optional update check on startup with a non-blocking UI banner.
 
 ---
 
 ## 🧰 Requirements
 
-- Windows 10 or later.
-- PowerShell 5.1 or higher.
+- Windows 10 or later (Windows 11 is recommended).
+- PowerShell 5.1 or higher (PowerShell 7 is recommended).
 - .NET Framework 4.7.2 or higher (usually already installed on supported systems).
 
 ---
@@ -65,7 +67,7 @@ Show-IntuneWinAppUtilGUI
 | Field                  | Required | Description |
 |------------------------|----------|-------------|
 | **Source Folder (-c)** | ✅ Yes   | The root folder containing your setup file. |
-| **Setup File (-s)**    | ✅ Yes   | The installer (EXE, MSI, or ZIP). If in same folder, only the filename is shown. |
+| **Setup File (-s)**    | ✅ Yes   | The installer (EXE or MSI). If in same folder, only the filename is shown. |
 | **Output Folder (-o)** | ✅ Yes   | Where the `.intunewin` package will be created. |
 | **IntuneWinAppUtil**   | ✅ Yes\* | You can specify the path manually or let the GUI download the latest version automatically. |
 | **Final Filename**     | Optional | Renames the generated `.intunewin` file. Invalid characters are removed automatically. |
@@ -84,6 +86,7 @@ Show-IntuneWinAppUtilGUI
 
 - It stores only the `ToolPath` so it can be reused at next launch.
 - This file is updated when the GUI closes.
+- Optional: `UpdateCheckEnabled` (boolean) to enable/disable the update check banner.
 
 ---
 
@@ -104,6 +107,8 @@ If the path to `IntuneWinAppUtil.exe` is not provided:
 - Press **ENTER** to run the packaging when you are ready.
 - A small tooltip message at the bottom of the GUI provides quick usage hints.
 - Clear and Exit buttons are provided to reset inputs or close the app manually.
+- Use `Show-IntuneWinAppUtilGUI -ShowVersion` to display installed/latest versions for testing.
+- Use `Show-IntuneWinAppUtilGUI -ForceUpdateBanner` to simulate an update banner.
 
 ---
 
