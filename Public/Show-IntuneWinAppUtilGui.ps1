@@ -151,7 +151,7 @@ function Show-IntuneWinAppUtilGUI {
         $updateCheckJob = Start-Job -ArgumentList $modulePath, $moduleName, $currentVersion, $timeoutSeconds, [bool]$ShowVersion -ScriptBlock {
             param($modulePath, $moduleName, $currentVersion, $timeoutSeconds, $showVersion)
             $moduleRoot = Split-Path $modulePath -Parent
-            $helperPath = Join-Path $moduleRoot 'Private\Get-PowerShellGalleryModuleVersion.ps1'
+            $helperPath = Join-Path $moduleRoot 'Private\IWAPG-Hlp-UpdateCheck.ps1'
             if (Test-Path $helperPath) {
                 . $helperPath
             } else {

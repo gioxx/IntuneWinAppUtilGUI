@@ -1,3 +1,55 @@
+function Get-ExeVersion {
+    <#
+    .SYNOPSIS
+    Returns file version (FileVersion preferred, then ProductVersion); $null if not available.
+    .DESCRIPTION
+    - Uses [System.Diagnostics.FileVersionInfo] to read version metadata.
+    - Prefers FileVersion, falls back to ProductVersion.
+    .PARAMETER Path
+    Absolute path to the executable file.
+    .OUTPUTS
+    [string] or $null
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    try {
+        if (-not (Test-Path $Path)) { return $null }
+        $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Path)
+        if ($vi.FileVersion -and $vi.FileVersion.Trim()) { return $vi.FileVersion.Trim() }
+        if ($vi.ProductVersion -and $vi.ProductVersion.Trim()) { return $vi.ProductVersion.Trim() }
+        return $null
+    } catch {
+        return $null
+    }
+}
+
+function Show-ToolVersion {
+    <#
+    .SYNOPSIS
+    Updates the provided TextBlock with IntuneWinAppUtil version text.
+    .PARAMETER Path
+    Full path to IntuneWinAppUtil.exe (can be $null/empty).
+    .PARAMETER Target
+    WPF TextBlock (or any object with a 'Text' property) to update.
+    #>
+    
+    param(
+        [string]$Path,
+        [Parameter(Mandatory)][object]$Target
+    )
+
+    $ver = if ($Path) { Get-ExeVersion -Path $Path } else { $null }
+    $Target.Text = if ($ver) {
+        "IntuneWinAppUtil version: $ver"
+    } else {
+        "IntuneWinAppUtil version: (not detected)"
+    }
+}
+
 function Invoke-DownloadIntuneTool {
     <#
     .SYNOPSIS
@@ -85,5 +137,39 @@ function Invoke-DownloadIntuneTool {
                 }
             } catch {}
         }
+    }
+}
+
+function Initialize-IntuneWinAppUtil {
+    <#
+    .SYNOPSIS
+    Returns a valid IntuneWinAppUtil.exe path or $null on failure.
+    .DESCRIPTION
+    - If a UI-provided path is valid, use it.
+    - Else, use cached copy under %APPDATA%\IntuneWinAppUtilGUI\bin.
+    - Else, download the latest via Invoke-DownloadIntuneTool (private helper).
+    .PARAMETER UiToolPath
+    Optional path provided by the UI (textbox).
+    .OUTPUTS
+    [string] or $null
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)][string]$UiToolPath
+    )
+
+    try {
+        $appRoot = Join-Path $env:APPDATA 'IntuneWinAppUtilGUI'
+        $binDir = Join-Path $appRoot 'bin'
+        $exePath = Join-Path $binDir 'IntuneWinAppUtil.exe'
+
+        if (-not [string]::IsNullOrWhiteSpace($UiToolPath) -and (Test-Path $UiToolPath)) { return $UiToolPath }
+        if (Test-Path $exePath) { return $exePath }
+
+        # Fallback: download latest tool
+        return (Invoke-DownloadIntuneTool)
+    } catch {
+        return $null
     }
 }
