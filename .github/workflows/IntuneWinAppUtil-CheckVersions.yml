@@ -94,3 +94,15 @@ jobs:
         git diff --cached --quiet || git commit -m "Update IntuneWinAppUtil version list to ${{ steps.get_latest.outputs.latest_tag }}"
         git push
       shell: bash
+
+  keepalive:
+    name: Keep workflow alive
+    needs:
+      - update-if-new-release
+    if: ${{ always() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Keep scheduled workflow alive
+        uses: liskin/gh-workflow-keepalive@v1
