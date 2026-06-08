@@ -1,6 +1,6 @@
 @{
     RootModule           = 'IntuneWinAppUtilGUI.psm1'
-    ModuleVersion        = '1.0.7'
+    ModuleVersion        = '1.0.8'
     GUID                 = '7db79126-1b57-48d2-970a-4795692dfcfc'
     Author               = 'Giovanni Solone'
     Description          = 'GUI wrapper for IntuneWinAppUtil.exe with config file support and WPF interface.'
@@ -21,12 +21,9 @@
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             IconUri      = 'https://raw.githubusercontent.com/gioxx/IntuneWinAppUtilGUI/main/Assets/icon.png'
             ReleaseNotes = @'
-- Improved: Live Source/Output path length indicators.
-- Improved: On Run, warns if the longest file path under Source exceeds Windows limits, showing the longest path found.
-- Improved: Added UI note clarifying that Source path length is indicative and final check runs at packaging time.
-- Improved: Optional update check against PowerShell Gallery with UI banner.
-- Improved: Added -ShowVersion / -ForceUpdateBanner switches for update-banner testing.
-- Improved: Consolidated private helpers under IWAPG-Hlp-* naming.
+- Fixed: Retries output rename when the target file is temporarily locked.
+- Improved: Falls back to MSI metadata for PSADT/MSI-based packages when AppName/AppVersion are missing.
+- Improved: Release naming and UI version now align with 1.0.8.
 '@
         }
     }
