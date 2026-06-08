@@ -82,7 +82,7 @@
                 </Grid>
 
                 <TextBlock
-                    Text="Remember that the setup file must be a valid MSI or EXE file.&#x0a;If I detect the existence of Invoke-AppDeployToolkit.exe in the source folder, I propose it as the default setup file, making life easier for those who use PSAppDeployToolkit."
+                    Text="Remember that the setup file must be a valid MSI or EXE file.&#x0a;If I detect the existence of Invoke-AppDeployToolkit.exe in the source folder, I propose it as the default setup file. When the package is MSI-based, I can also use the MSI metadata to suggest the final filename."
                     Foreground="Gray"
                     FontSize="12"
                     Margin="0,5,0,0"
@@ -145,7 +145,7 @@
                 <TextBox Name="FinalFilename" Margin="0,5" Padding="4"/>
 
                 <TextBlock
-                    Text="If I detect the existence of Invoke-AppDeployToolkit.ps1 in the source folder, I propose a default name based on the application name and version extracted from the script."
+                    Text="If I detect the existence of Invoke-AppDeployToolkit.ps1 in the source folder, I propose a default name based on the application name and version extracted from the script. If those values are missing, I fall back to the MSI metadata when available."
                     Foreground="Gray"
                     FontSize="12"
                     Margin="0,5,0,0"

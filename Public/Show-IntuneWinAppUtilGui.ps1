@@ -473,7 +473,25 @@ function Show-IntuneWinAppUtilGUI {
                     $counter++
                 }
 
-                Rename-Item -Path $defaultPath -NewName $finalName -Force
+                $renameSucceeded = $false
+                $renameError = $null
+                for ($attempt = 1; $attempt -le 10; $attempt++) {
+                    try {
+                        Rename-Item -Path $defaultPath -NewName $finalName -Force
+                        $renameSucceeded = $true
+                        break
+                    } catch {
+                        $renameError = $_.Exception.Message
+                        if ($attempt -lt 10) {
+                            Start-Sleep -Milliseconds (250 * $attempt)
+                        }
+                    }
+                }
+
+                if (-not $renameSucceeded) {
+                    throw "Unable to rename '$defaultPath' to '$finalName' after several attempts. Last error: $renameError"
+                }
+
                 $fullPath = Join-Path $o $finalName
 
                 $msg = "Package created and renamed to:`n$finalName"
