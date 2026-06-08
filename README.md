@@ -17,7 +17,7 @@ This tool simplifies the packaging of Win32 apps for Microsoft Intune by providi
 - Automatically stores tool path and reuses it on next launch (saved in a JSON file, check "[Configuration file](#%EF%B8%8F-configuration-file)").
 - Graphical interface for all required options (`-c`, `-s`, `-o`).
 - **Auto-download** of the latest version of `IntuneWinAppUtil.exe` from GitHub (optional).
-- It detects the use of PSAppDeployToolkit and automatically proposes executable file and final IntuneWin package name.
+- It detects the use of PSAppDeployToolkit and automatically proposes the setup file and final IntuneWin package name, including MSI-backed packages.
 - Sanitizes invalid characters from the output filename.
 - Live path length indicator for Source/Output folders, with a final max-path check at Run time.
 - Optional update check on startup with a non-blocking UI banner.
