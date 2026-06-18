@@ -27,6 +27,7 @@
 - Improved: Refreshed the main window layout with a cleaner, modern visual style.
 - Improved: Added in-app Help for launch switches and keyboard shortcuts.
 - Improved: Clarified confirmation popups for exit, download, path warnings and package completion.
+- Fixed: ShowVersion and ForceUpdateBanner now provide immediate feedback in the refreshed header.
 - Improved: Release naming and UI version now align with 1.0.8.
 '@
         }

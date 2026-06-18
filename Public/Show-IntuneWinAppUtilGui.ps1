@@ -146,10 +146,17 @@ function Show-IntuneWinAppUtilGUI {
 
     if ($shouldCheckUpdates) {
         $currentVersion = $MyInvocation.MyCommand.Module.Version
-        if ($ForceUpdateBanner) { $currentVersion = [version]'1.0.0' }
         $modulePath = $MyInvocation.MyCommand.Module.Path
         $moduleName = 'IntuneWinAppUtilGUI'
         $timeoutSeconds = 10
+
+        if ($ForceUpdateBanner) {
+            $UpdateAvailableText.Text = "Update available: test banner (run 'Update-Module IntuneWinAppUtilGUI' in your PowerShell session)"
+            $UpdateAvailableText.Visibility = [System.Windows.Visibility]::Visible
+        } elseif ($ShowVersion) {
+            $UpdateAvailableText.Text = "Installed: $currentVersion | Latest: checking..."
+            $UpdateAvailableText.Visibility = [System.Windows.Visibility]::Visible
+        }
 
         $updateCheckJob = Start-Job -ArgumentList $modulePath, $moduleName, $currentVersion, $timeoutSeconds, [bool]$ShowVersion -ScriptBlock {
             param($modulePath, $moduleName, $currentVersion, $timeoutSeconds, $showVersion)
@@ -192,8 +199,7 @@ function Show-IntuneWinAppUtilGUI {
                 $updateCheckJob = $null
 
                 if ($ForceUpdateBanner) {
-                    $UpdateAvailableText.Text = "Update available: $($latest.Latest) (run 'Update-Module IntuneWinAppUtilGUI' in your PowerShell session)"
-                    $UpdateAvailableText.Visibility = [System.Windows.Visibility]::Visible
+                    return
                 } elseif ($ShowVersion) {
                     $latestText = if ($latest -and $latest.Latest) { $latest.Latest } else { 'unknown' }
                     if ($latest -and $latest.Error) {
