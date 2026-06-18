@@ -25,6 +25,8 @@
 - Improved: Falls back to MSI metadata for PSADT/MSI-based packages when AppName/AppVersion are missing.
 - Fixed: Replaced emoji UI glyphs with Windows-version-safe labels.
 - Improved: Refreshed the main window layout with a cleaner, modern visual style.
+- Improved: Added in-app Help for launch switches and keyboard shortcuts.
+- Improved: Clarified confirmation popups for exit, download, path warnings and package completion.
 - Improved: Release naming and UI version now align with 1.0.8.
 '@
         }

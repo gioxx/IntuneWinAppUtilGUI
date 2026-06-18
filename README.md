@@ -104,12 +104,24 @@ If the path to `IntuneWinAppUtil.exe` is not provided:
 
 ## 💡 Tips
 
-- Press **ESC** to close the window.
+- Use the **Help** button in the main window to review command-line switches and keyboard shortcuts.
+- Press **ESC** to close the window after confirmation.
 - Press **ENTER** to run the packaging when you are ready.
 - A small tooltip message at the bottom of the GUI provides quick usage hints.
 - Clear and Exit buttons are provided to reset inputs or close the app manually.
-- Use `Show-IntuneWinAppUtilGUI -ShowVersion` to display installed/latest versions for testing.
-- Use `Show-IntuneWinAppUtilGUI -ForceUpdateBanner` to simulate an update banner.
+
+### Optional launch switches
+
+```powershell
+Show-IntuneWinAppUtilGUI -ShowVersion
+Show-IntuneWinAppUtilGUI -ForceUpdateBanner
+Show-IntuneWinAppUtilGUI -Diag
+```
+
+- `-ShowVersion` displays installed/latest module versions in the header banner.
+- `-ForceUpdateBanner` simulates an update banner for testing.
+- `-Diag` writes startup/shutdown diagnostics such as handles, GDI handles and memory usage.
+- Standard PowerShell `-Verbose` and `-Debug` switches are preserved when the GUI relaunches itself in STA mode.
 
 ---
 
