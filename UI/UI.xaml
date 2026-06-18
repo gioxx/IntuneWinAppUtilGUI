@@ -130,6 +130,8 @@
             <Setter Property="Margin" Value="0,5,0,0"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="MaxWidth" Value="510"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="TextAlignment" Value="Left"/>
         </Style>
 
         <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
@@ -178,8 +180,21 @@
                                        FontWeight="SemiBold"
                                        Foreground="#FFFFFF"
                                        VerticalAlignment="Center"/>
-                            <Border Margin="10,2,0,0" Padding="7,2" CornerRadius="9" Background="#24FFFFFF" BorderBrush="#3DFFFFFF" BorderThickness="1">
-                                <TextBlock Text="1.0.8" Foreground="#FFFFFF" FontSize="11" FontWeight="SemiBold"/>
+                            <Border Margin="10,0,0,0"
+                                    Width="48"
+                                    Height="22"
+                                    CornerRadius="11"
+                                    Background="#24FFFFFF"
+                                    BorderBrush="#3DFFFFFF"
+                                    BorderThickness="1"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="1.0.8"
+                                           Foreground="#FFFFFF"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"/>
                             </Border>
                         </StackPanel>
                         <TextBlock Text="Win32 packaging assistant for Microsoft Intune"
@@ -317,7 +332,13 @@
                                 <Button Name="DownloadTool" Content="Force download" Grid.Column="2" Width="118"/>
                             </Grid>
 
-                            <TextBlock Margin="0,5,0,0" Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" MaxWidth="510">
+                            <TextBlock Margin="0,5,0,0"
+                                       Foreground="{StaticResource MutedBrush}"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       MaxWidth="510"
+                                       HorizontalAlignment="Left"
+                                       TextAlignment="Left">
                                 <Run Name="ToolVersionText" Text="IntuneWinAppUtil version: (not detected)"/>
                                 <Run Text=" (" />
                                 <Hyperlink NavigateUri="https://github.com/gioxx/IntuneWinAppUtilGUI/blob/main/Tools/IntuneWinAppUtilVersions.md" ToolTip="Open versions list page">Version history</Hyperlink>
@@ -346,13 +367,21 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Background="#EEF6FF" BorderBrush="#C5DCF6" BorderThickness="1" CornerRadius="8" Padding="12">
+                    <Border Grid.Column="0"
+                            Background="#EEF6FF"
+                            BorderBrush="#C5DCF6"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="12"
+                            HorizontalAlignment="Left">
                         <TextBlock
                             Text="Required: Source folder, setup file and output folder (*). Source path length is indicative; Run checks the longest file path before packaging. Final filename is optional. Press ESC to close."
                             Foreground="#33536F"
                             FontSize="12"
                             TextWrapping="Wrap"
-                            MaxWidth="400"/>
+                            MaxWidth="400"
+                            HorizontalAlignment="Left"
+                            TextAlignment="Left"/>
                     </Border>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="14,0,0,0">
@@ -367,7 +396,7 @@
                            FontSize="11"
                            Margin="0,10,0,0"
                            Foreground="{StaticResource MutedBrush}">
-                    <Run Text="Gioxx, 2025 " />
+                    <Run Text="Gioxx, 2026 " />
                     <Hyperlink NavigateUri="https://github.com/gioxx/IntuneWinAppUtilGUI">
                         Available on GitHub
                     </Hyperlink>
