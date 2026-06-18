@@ -94,6 +94,7 @@ function Show-IntuneWinAppUtilGUI {
     $BrowseTool      = $window.FindName("BrowseTool")
     
     $RunButton       = $window.FindName("RunButton")
+    $HelpButton      = $window.FindName("HelpButton")
     $ClearButton     = $window.FindName("ClearButton")
     $ExitButton      = $window.FindName("ExitButton")
 
@@ -274,8 +275,9 @@ function Show-IntuneWinAppUtilGUI {
     # Force download the IntuneWinAppUtil.exe tool
     $DownloadTool.Add_Click({
         $confirm = [System.Windows.MessageBox]::Show(
-            "This will download the latest IntuneWinAppUtil.exe and replace (if already exists) the one in your bin folder.`n`nProceed?",
-            "Confirm force download",
+            $window,
+            "Download the latest IntuneWinAppUtil.exe now?`n`nIf a cached copy already exists in the local bin folder, it will be replaced.",
+            "Refresh IntuneWinAppUtil.exe",
             [System.Windows.MessageBoxButton]::YesNo,
             [System.Windows.MessageBoxImage]::Question
         )
@@ -287,6 +289,7 @@ function Show-IntuneWinAppUtilGUI {
             Show-ToolVersion -Path $newPath -Target $ToolVersionText
 
             [System.Windows.MessageBox]::Show(
+                $window,
                 "IntuneWinAppUtil.exe has been refreshed.`n`nPath:`n$newPath",
                 "Download complete",
                 [System.Windows.MessageBoxButton]::OK,
@@ -294,6 +297,7 @@ function Show-IntuneWinAppUtilGUI {
             )
         } catch {
             [System.Windows.MessageBox]::Show(
+                $window,
                 "Download failed:`n$($_.Exception.Message)",
                 "Error",
                 [System.Windows.MessageBoxButton]::OK,
@@ -385,10 +389,11 @@ function Show-IntuneWinAppUtilGUI {
         }
         if ($o.Length -gt $PathLengthLimit) { $pathWarnings += "Output folder: $($o.Length)/$PathLengthLimit" }
         if ($pathWarnings.Count -gt 0) {
-            $msg = "One or more paths exceed $PathLengthLimit characters.`n`n" +
+            $msg = "Some paths exceed the recommended $PathLengthLimit character limit.`n`n" +
                    ($pathWarnings -join "`n") +
-                   "`n`nThis can cause IntuneWinAppUtil to fail on Windows.`nProceed anyway?"
+                   "`n`nIntuneWinAppUtil may fail on Windows when paths are too long.`n`nContinue packaging anyway?"
             $confirm = [System.Windows.MessageBox]::Show(
+                $window,
                 $msg,
                 "Path length warning",
                 [System.Windows.MessageBoxButton]::YesNo,
@@ -496,15 +501,16 @@ function Show-IntuneWinAppUtilGUI {
 
                 $fullPath = Join-Path $o $finalName
 
-                $msg = "Package created and renamed to:`n$finalName"
+                $msg = "Package created successfully.`n`nFile:`n$finalName"
                 if ($finalName -ne $newName) {
-                    $msg += "`n(Note: original name '$newName' already existed.)"
+                    $msg += "`n`nNote: '$newName' already existed, so an incremental suffix was added."
                 }
-                $msg += "`n`nOpen folder?"
+                $msg += "`n`nOpen the output folder and select the package?"
 
                 $resp = [System.Windows.MessageBox]::Show(
+                    $window,
                     $msg,
-                    "Success",
+                    "Package created",
                     [System.Windows.MessageBoxButton]::YesNo,
                     [System.Windows.MessageBoxImage]::Information
                 )
@@ -533,6 +539,37 @@ function Show-IntuneWinAppUtilGUI {
         $FinalFilename.Clear()
     })
 
+    # Help button: explain command-line switches and keyboard shortcuts
+    $HelpButton.Add_Click({
+        $helpText = @"
+Command-line switches
+
+Show-IntuneWinAppUtilGUI -ShowVersion
+Shows the installed module version and the latest available version in the header banner.
+
+Show-IntuneWinAppUtilGUI -ForceUpdateBanner
+Simulates an available update banner for testing the notification area.
+
+Show-IntuneWinAppUtilGUI -Diag
+Writes startup and shutdown diagnostics, such as handles, GDI handles and memory usage.
+
+Standard PowerShell switches
+-Verbose and -Debug are preserved when the GUI relaunches itself in STA mode.
+
+Keyboard shortcuts
+Enter: run packaging.
+Esc: ask before closing the window.
+"@
+
+        [System.Windows.MessageBox]::Show(
+            $window,
+            $helpText,
+            "Help",
+            [System.Windows.MessageBoxButton]::OK,
+            [System.Windows.MessageBoxImage]::Information
+        ) | Out-Null
+    })
+
     # Exit button: close the window
     $ExitButton.Add_Click({
         $window.Close()
@@ -543,7 +580,14 @@ function Show-IntuneWinAppUtilGUI {
         param($evtSender, $e)
         switch ($e.Key) {
             'Escape' {
-                if ([System.Windows.MessageBox]::Show("Exit the tool?", "Confirm", "YesNo", "Question") -eq [System.Windows.MessageBoxResult]::Yes) {
+                $confirmExit = [System.Windows.MessageBox]::Show(
+                    $window,
+                    "Close IntuneWinAppUtil GUI?`n`nCurrent field values will not be kept, except the saved IntuneWinAppUtil path.",
+                    "Close IntuneWinAppUtil GUI",
+                    [System.Windows.MessageBoxButton]::YesNo,
+                    [System.Windows.MessageBoxImage]::Question
+                )
+                if ($confirmExit -eq [System.Windows.MessageBoxResult]::Yes) {
                     $window.Close()
                 }
             }
