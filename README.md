@@ -17,7 +17,8 @@ This tool simplifies the packaging of Win32 apps for Microsoft Intune by providi
 - Automatically stores tool path and reuses it on next launch (saved in a JSON file, check "[Configuration file](#%EF%B8%8F-configuration-file)").
 - Graphical interface for all required options (`-c`, `-s`, `-o`).
 - **Auto-download** of the latest version of `IntuneWinAppUtil.exe` from GitHub (optional).
-- It detects the use of PSAppDeployToolkit and automatically proposes executable file and final IntuneWin package name.
+- It detects the use of PSAppDeployToolkit and automatically proposes the setup file and final IntuneWin package name, including MSI-backed packages.
+- Uses Windows-version-safe UI labels instead of emoji glyphs in the WPF interface.
 - Sanitizes invalid characters from the output filename.
 - Live path length indicator for Source/Output folders, with a final max-path check at Run time.
 - Optional update check on startup with a non-blocking UI banner.
@@ -103,25 +104,24 @@ If the path to `IntuneWinAppUtil.exe` is not provided:
 
 ## 💡 Tips
 
-- Press **ESC** to close the window.
+- Use the **Help** button in the main window to review command-line switches and keyboard shortcuts.
+- Press **ESC** to close the window after confirmation.
 - Press **ENTER** to run the packaging when you are ready.
 - A small tooltip message at the bottom of the GUI provides quick usage hints.
 - Clear and Exit buttons are provided to reset inputs or close the app manually.
-- Use `Show-IntuneWinAppUtilGUI -ShowVersion` to display installed/latest versions for testing.
-- Use `Show-IntuneWinAppUtilGUI -ForceUpdateBanner` to simulate an update banner.
 
----
+### Optional launch switches
 
-## 🐞 Known Issues
+```powershell
+Show-IntuneWinAppUtilGUI -ShowVersion
+Show-IntuneWinAppUtilGUI -ForceUpdateBanner
+Show-IntuneWinAppUtilGUI -Diag
+```
 
-### Emoji rendering on Windows 10 (and earlier versions)
-
-The graphical interface makes use of emojis (such as ✅, 🚀, 🔧, etc.) to improve visual feedback and usability.  
-**On Windows 10** (also 8.1 and 7), some emojis might not be displayed correctly due to limited font support in the system’s default rendering engine. You may see missing characters or fallback symbols instead. **On Windows 11**, emoji rendering is fully supported and works as expected.
-
-> [!IMPORTANT]  
-> This is only a cosmetic issue. The script and tool functionality are not affected in any way. Everything will continue to work normally on both Windows 10 and Windows 11.
-> If you would like to help me fix this problem, feel free to open a Pull Request with your integration!
+- `-ShowVersion` displays installed/latest module versions in the header banner.
+- `-ForceUpdateBanner` simulates an update banner for testing.
+- `-Diag` writes startup/shutdown diagnostics such as handles, GDI handles and memory usage.
+- Standard PowerShell `-Verbose` and `-Debug` switches are preserved when the GUI relaunches itself in STA mode.
 
 ---
 
