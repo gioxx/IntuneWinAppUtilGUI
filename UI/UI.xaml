@@ -82,7 +82,7 @@
                 </Grid>
 
                 <TextBlock
-                    Text="Remember that the setup file must be a valid MSI or EXE file.&#x0a;If I detect the existence of Invoke-AppDeployToolkit.exe in the source folder, I propose it as the default setup file. When the package is MSI-based, I can also use the MSI metadata to suggest the final filename."
+                    Text="Setup file must be a valid MSI or EXE. PSADT packages are detected automatically; MSI metadata is used when script metadata is missing."
                     Foreground="Gray"
                     FontSize="12"
                     Margin="0,5,0,0"
@@ -145,7 +145,7 @@
                 <TextBox Name="FinalFilename" Margin="0,5" Padding="4"/>
 
                 <TextBlock
-                    Text="If I detect the existence of Invoke-AppDeployToolkit.ps1 in the source folder, I propose a default name based on the application name and version extracted from the script. If those values are missing, I fall back to the MSI metadata when available."
+                    Text="Suggested from PSADT AppName/AppVersion, or from MSI metadata when those values are empty."
                     Foreground="Gray"
                     FontSize="12"
                     Margin="0,5,0,0"
@@ -162,20 +162,20 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <Button Name="RunButton" Content="🚀 Run" Width="100" Height="30" Grid.Column="0" Padding="2"/>
-                <Button Name="ClearButton" Content="🧽 Clear" Width="100" Height="30" Grid.Column="2" Padding="2"/>
-                <Button Name="ExitButton" Content="🚪 Exit" Width="100" Height="30" Grid.Column="4" Padding="2"/>
+                <Button Name="RunButton" Content="Run" Width="100" Height="30" Grid.Column="0" Padding="2"/>
+                <Button Name="ClearButton" Content="Clear" Width="100" Height="30" Grid.Column="2" Padding="2"/>
+                <Button Name="ExitButton" Content="Exit" Width="100" Height="30" Grid.Column="4" Padding="2"/>
             </Grid>
 
             <!-- Info tooltip -->
             <TextBlock Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
-            Text="⚠️ Source folder, setup file and output folder are required (*).&#x0a;ℹ️ The Source folder path length shown above is indicative; the final check runs at packaging time (Run) and considers the longest file path.&#x0a;ℹ️ Final filename is optional and used for renaming the .intunewin file. If not provided, the tool will generate a name based on the source folder.&#x0a;ℹ️ IntuneWinAppUtil Path is also optional. If not provided, the tool will automatically download the latest version from GitHub.&#x0a;&#x0a;Press ESC on the keyboard to close the application.&#x0a;Click on 'Run' button or press ENTER on the keyboard to execute the IntuneWinAppUtil with the provided parameters."
+            Text="Required: Source folder, setup file and output folder (*).&#x0a;Source path length is indicative; Run checks the longest file path before packaging.&#x0a;Final filename is optional. If empty, the tool uses the source folder name.&#x0a;IntuneWinAppUtil Path is optional; if empty, the latest tool is downloaded automatically.&#x0a;&#x0a;Press ESC to close. Click Run or press ENTER to execute IntuneWinAppUtil."
             Foreground="Gray" FontSize="12" Margin="0,20,0,0" TextWrapping="Wrap"/>
 
             <!-- GitHub Link -->
             <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
                     HorizontalAlignment="Right" FontSize="11" Margin="0,6,0,0">
-                <Run Text="Gioxx, 2025 ❤️ " />
+                <Run Text="Gioxx, 2025 " />
                 <Hyperlink NavigateUri="https://github.com/gioxx/IntuneWinAppUtilGUI">
                     Available on GitHub
                 </Hyperlink>

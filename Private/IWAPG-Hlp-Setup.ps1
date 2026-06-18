@@ -82,7 +82,7 @@ function Get-MsiPackageMetadata {
         foreach ($propertyName in @('ProductName', 'ProductVersion')) {
             $view = $null
             try {
-                $query = "SELECT `Value` FROM `Property` WHERE `Property`='$propertyName'"
+                $query = 'SELECT `Value` FROM `Property` WHERE `Property`=''' + $propertyName + ''''
                 $view = $database.OpenView($query)
                 $views += $view
                 $view.Execute()
@@ -163,14 +163,15 @@ function Set-SetupFromSource {
         if (Test-Path $maybeRelative) { return }
     }
 
-    # Search for Invoke-AppDeployToolkit.exe first, then fall back to the first MSI in the tree.
+    # Search for Invoke-AppDeployToolkit.exe first, and keep an MSI candidate for metadata fallback.
     $exeHit = Get-ChildItem -Path $SourcePath -Filter 'Invoke-AppDeployToolkit.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    $msiHit = $null
-    if (-not $exeHit) {
-        $msiHit = Get-ChildItem -Path $SourcePath -Filter '*.msi' -File -Recurse -ErrorAction SilentlyContinue |
-            Sort-Object FullName |
-            Select-Object -First 1
-    }
+    $msiHit = Get-ChildItem -Path $SourcePath -Filter '*.msi' -File -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object @{
+            Expression = {
+                if ($_.FullName -match '\\Files\\') { 0 } else { 1 }
+            }
+        }, FullName |
+        Select-Object -First 1
 
     $selectedHit = if ($exeHit) { $exeHit } else { $msiHit }
     if ($selectedHit) {
@@ -190,9 +191,9 @@ function Set-SetupFromSource {
                     if (Test-Path $ps1Path) {
                         $content = Get-Content $ps1Path -Raw
 
-                        # Support both single and double quotes: AppName = 'X' or AppName = "X"
-                        if ($content -match '(?m)AppName\s*=\s*[''"]([^''"]+)[''"]') { $appName = $matches[1] }
-                        if ($content -match '(?m)AppVersion\s*=\s*[''"]([^''"]*)[''"]') { $appVersion = $matches[1] }
+                        # Support common PSADT forms such as $appName, $adtSession.AppName, and direct AppName assignments.
+                        if ($content -match '(?im)(?:\$[\w.]+\.)?AppName\s*=\s*[''"]([^''"]*)[''"]') { $appName = $matches[1] }
+                        if ($content -match '(?im)(?:\$[\w.]+\.)?AppVersion\s*=\s*[''"]([^''"]*)[''"]') { $appVersion = $matches[1] }
                     }
                 }
 

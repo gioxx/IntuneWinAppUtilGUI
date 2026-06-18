@@ -23,6 +23,7 @@
             ReleaseNotes = @'
 - Fixed: Retries output rename when the target file is temporarily locked.
 - Improved: Falls back to MSI metadata for PSADT/MSI-based packages when AppName/AppVersion are missing.
+- Fixed: Replaced emoji UI glyphs with Windows-version-safe labels.
 - Improved: Release naming and UI version now align with 1.0.8.
 '@
         }
