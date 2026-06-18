@@ -24,7 +24,9 @@ function Show-IntuneWinAppUtilGUI {
         $modulePath = $MyInvocation.MyCommand.Module.Path
         $shell = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
         $cmd = "Import-Module `"$modulePath`"; Show-IntuneWinAppUtilGUI"
-        if ($PSBoundParameters.ContainsKey('Debug')) { $cmd += " -Debug" }
+        foreach ($switchName in @('Diag', 'ShowVersion', 'ForceUpdateBanner', 'Debug', 'Verbose')) {
+            if ($PSBoundParameters.ContainsKey($switchName)) { $cmd += " -$switchName" }
+        }
         Start-Process $shell -ArgumentList @(
             '-NoProfile',
             '-STA',
