@@ -394,7 +394,6 @@
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <Button Name="RunButton" Content="Run" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
-                        <Button Name="HelpButton" Content="Help" Width="82" Margin="0,0,8,0"/>
                         <Button Name="ClearButton" Content="Clear" Width="104" Margin="0,0,8,0"/>
                         <Button Name="ExitButton" Content="Exit (ESC)" Style="{StaticResource DangerButtonStyle}"/>
                     </StackPanel>
@@ -406,6 +405,10 @@
                            Margin="0,10,0,0"
                            Foreground="{StaticResource MutedBrush}">
                     <Run Text="Gioxx, 2026 - " />
+                    <Hyperlink Name="HelpButton" ToolTip="Show command-line switches and keyboard shortcuts">
+                        Help
+                    </Hyperlink>
+                    <Run Text=" - " />
                     <Hyperlink NavigateUri="https://github.com/gioxx/IntuneWinAppUtilGUI">
                         Available on GitHub
                     </Hyperlink>
