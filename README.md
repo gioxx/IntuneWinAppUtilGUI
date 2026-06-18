@@ -18,6 +18,7 @@ This tool simplifies the packaging of Win32 apps for Microsoft Intune by providi
 - Graphical interface for all required options (`-c`, `-s`, `-o`).
 - **Auto-download** of the latest version of `IntuneWinAppUtil.exe` from GitHub (optional).
 - It detects the use of PSAppDeployToolkit and automatically proposes the setup file and final IntuneWin package name, including MSI-backed packages.
+- Uses Windows-version-safe UI labels instead of emoji glyphs in the WPF interface.
 - Sanitizes invalid characters from the output filename.
 - Live path length indicator for Source/Output folders, with a final max-path check at Run time.
 - Optional update check on startup with a non-blocking UI banner.
@@ -109,19 +110,6 @@ If the path to `IntuneWinAppUtil.exe` is not provided:
 - Clear and Exit buttons are provided to reset inputs or close the app manually.
 - Use `Show-IntuneWinAppUtilGUI -ShowVersion` to display installed/latest versions for testing.
 - Use `Show-IntuneWinAppUtilGUI -ForceUpdateBanner` to simulate an update banner.
-
----
-
-## 🐞 Known Issues
-
-### Emoji rendering on Windows 10 (and earlier versions)
-
-The graphical interface makes use of emojis (such as ✅, 🚀, 🔧, etc.) to improve visual feedback and usability.  
-**On Windows 10** (also 8.1 and 7), some emojis might not be displayed correctly due to limited font support in the system’s default rendering engine. You may see missing characters or fallback symbols instead. **On Windows 11**, emoji rendering is fully supported and works as expected.
-
-> [!IMPORTANT]  
-> This is only a cosmetic issue. The script and tool functionality are not affected in any way. Everything will continue to work normally on both Windows 10 and Windows 11.
-> If you would like to help me fix this problem, feel free to open a Pull Request with your integration!
 
 ---
 
