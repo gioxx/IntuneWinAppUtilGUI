@@ -373,21 +373,29 @@
                             BorderThickness="1"
                             CornerRadius="8"
                             Padding="12"
-                            HorizontalAlignment="Left">
+                            HorizontalAlignment="Stretch"
+                            Margin="0,0,12,0">
                         <TextBlock
-                            Text="Required: Source folder, setup file and output folder (*). Source path length is indicative; Run checks the longest file path before packaging. Final filename is optional. Press ESC to close."
                             Foreground="#33536F"
                             FontSize="12"
                             TextWrapping="Wrap"
-                            MaxWidth="400"
+                            MaxWidth="520"
                             HorizontalAlignment="Left"
-                            TextAlignment="Left"/>
+                            TextAlignment="Left">
+                            <Run Text="Required: Source folder, setup file and output folder(*)" FontWeight="SemiBold"/>
+                            <LineBreak/>
+                            <Run Text="Source path length is indicative; Run checks the longest file path before packaging."/>
+                            <LineBreak/>
+                            <Run Text="Final filename is optional. If empty, the tool uses the source folder name."/>
+                            <LineBreak/>
+                            <Run Text="IntuneWinAppUtil Path is optional; if empty, the latest tool is downloaded automatically."/>
+                        </TextBlock>
                     </Border>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="14,0,0,0">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <Button Name="RunButton" Content="Run" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
                         <Button Name="ClearButton" Content="Clear" Width="104" Margin="0,0,8,0"/>
-                        <Button Name="ExitButton" Content="Exit" Style="{StaticResource DangerButtonStyle}"/>
+                        <Button Name="ExitButton" Content="Exit (ESC)" Style="{StaticResource DangerButtonStyle}"/>
                     </StackPanel>
                 </Grid>
 
