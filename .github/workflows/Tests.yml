@@ -1,0 +1,31 @@
+name: PowerShell Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Pester
+        shell: pwsh
+        run: Install-Module -Name Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+
+      - name: Validate module manifest
+        shell: pwsh
+        run: Test-ModuleManifest -Path ./IntuneWinAppUtilGUI.psd1
+
+      - name: Run tests
+        shell: pwsh
+        run: Invoke-Pester -Path ./Tests -CI
