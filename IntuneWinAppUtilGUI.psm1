@@ -5,10 +5,11 @@ Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 Add-Type -AssemblyName System.Windows.Forms
 
-# Expose module root so public/private scripts can resolve resources (UI.xaml, Assets, etc.)
+# Expose module root so public/private scripts can resolve resources
+# (UI.xaml, Assets, etc.)
 $script:ModuleRoot = $PSScriptRoot
 
-# --- Load Private helpers first (NOT exported) ---
+# Private helpers
 $privateDir = Join-Path $PSScriptRoot 'Private'
 if (Test-Path $privateDir) {
     Get-ChildItem -Path $privateDir -Filter '*.ps1' -File | ForEach-Object {
@@ -20,7 +21,7 @@ if (Test-Path $privateDir) {
     }
 }
 
-# --- Load Public entry points (will be exported) ---
+# Public entry points
 $publicDir = Join-Path $PSScriptRoot 'Public'
 if (Test-Path $publicDir) {
     Get-ChildItem -Path $publicDir -Filter '*.ps1' -File | ForEach-Object {
