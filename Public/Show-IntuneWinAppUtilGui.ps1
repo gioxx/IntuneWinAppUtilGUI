@@ -664,4 +664,4 @@ Esc: ask before closing the window.
     }
 }
 
-Export-ModuleMember -Function Show-IntuneWinAppUtilGUI
+Export-ModuleMember -Function Show-IntuneWinAppUtilGUI, Get-IntuneFileVersion
