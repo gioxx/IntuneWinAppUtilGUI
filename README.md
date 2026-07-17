@@ -7,6 +7,8 @@
 
 This tool simplifies the packaging of Win32 apps for Microsoft Intune by providing a modern and easy-to-use WPF interface, including automation, validation, and configuration persistence.
 
+For additional project documentation and practical guidance, see the [IntuneWinAppUtilGUI Knowledge Base](https://kb.gioxx.org/Projects/M365/intunewinapputilgui/).
+
 ![screenshot](Assets/screenshot.png)
 
 ---
@@ -14,14 +16,15 @@ This tool simplifies the packaging of Win32 apps for Microsoft Intune by providi
 ## 🔧 Features
 
 - Built with **WPF** (XAML) and **PowerShell** — no external dependencies.
-- Automatically stores tool path and reuses it on next launch (saved in a JSON file, check "[Configuration file](#%EF%B8%8F-configuration-file)").
-- Graphical interface for all required options (`-c`, `-s`, `-o`).
 - **Auto-download** of the latest version of `IntuneWinAppUtil.exe` from GitHub (optional).
+- Automatically stores tool path and reuses it on next launch (saved in a JSON file, check "[Configuration file](#%EF%B8%8F-configuration-file)").
+- Command-line helpers for checking executable versions and building Intune detection rules.
+- Graphical interface for all required options (`-c`, `-s`, `-o`).
 - It detects the use of PSAppDeployToolkit and automatically proposes the setup file and final IntuneWin package name, including MSI-backed packages.
-- Uses Windows-version-safe UI labels instead of emoji glyphs in the WPF interface.
-- Sanitizes invalid characters from the output filename.
 - Live path length indicator for Source/Output folders, with a final max-path check at Run time.
 - Optional update check on startup with a non-blocking UI banner.
+- Sanitizes invalid characters from the output filename.
+- Uses Windows-version-safe UI labels instead of emoji glyphs in the WPF interface.
 
 ---
 
@@ -60,6 +63,41 @@ Show-IntuneWinAppUtilGUI
     ```
 
 > 💡 Tip: you can add the module path to your `$env:PSModulePath` if you want to make it persist and available system-wide.
+
+---
+
+## Check an executable FileVersion
+
+The module also provides a command-line helper for the version value commonly used in Intune detection rules:
+
+```powershell
+Get-IntuneFileVersion -Path 'C:\Program Files\MyApp\MyApp.exe'
+```
+
+The command returns only the executable's `FileVersion`, for example `1.2.3.4`. It raises an error if the path does not exist or points to a directory.
+
+---
+
+## 🔍 Intune detection script
+
+The [`Scripts/Intune_CheckAppInstallation.ps1`](Scripts/Intune_CheckAppInstallation.ps1) script can be used as a starting point for a custom Intune Win32 app detection rule. It checks both 64-bit and 32-bit `Program Files` locations and returns:
+
+- exit code `0` when the executable is found and, when configured, meets the minimum version;
+- exit code `1` when the executable is missing or its version is below the required minimum.
+
+Before using it, edit `$searchPath` to match the relative path of the target executable:
+
+```powershell
+$searchPath = "Vendor\Application\application.exe"
+```
+
+To require a minimum version, pass it to `Get-AppStatus` near the end of the script:
+
+```powershell
+$status = Get-AppStatus -MinimumVersion "1.2.3.4"
+```
+
+To detect the file regardless of its version, leave the call without `-MinimumVersion`. The script writes a concise status message to standard output, which is useful when reviewing Intune Management Extension logs.
 
 ---
 
