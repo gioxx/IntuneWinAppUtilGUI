@@ -1,6 +1,6 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="IntuneWinAppUtil GUI - 1.0.8"
+        Title="IntuneWinAppUtil GUI - 1.0.9"
         SizeToContent="WidthAndHeight"
         ResizeMode="CanResize"
         MinWidth="700"
@@ -188,7 +188,7 @@
                                     BorderBrush="#3DFFFFFF"
                                     BorderThickness="1"
                                     VerticalAlignment="Center">
-                                <TextBlock Text="1.0.8"
+                                <TextBlock Text="1.0.9"
                                            Foreground="#FFFFFF"
                                            FontSize="11"
                                            FontWeight="SemiBold"
