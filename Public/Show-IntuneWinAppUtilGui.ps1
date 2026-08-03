@@ -77,6 +77,7 @@ function Show-IntuneWinAppUtilGUI {
     # Grab controls
     $SourceFolder    = $window.FindName("SourceFolder")
     $SetupFile       = $window.FindName("SetupFile")
+    $SetupFileHint   = $window.FindName("SetupFileHint")
     $OutputFolder    = $window.FindName("OutputFolder")
     $SourceFolderPathLength = $window.FindName("SourceFolderPathLength")
     $OutputFolderPathLength = $window.FindName("OutputFolderPathLength")
@@ -99,16 +100,45 @@ function Show-IntuneWinAppUtilGUI {
     $ExitButton      = $window.FindName("ExitButton")
 
     $PathLengthLimit = 260
+    $DefaultSetupFileHint = "Valid MSI or EXE. PSADT packages are detected automatically; MSI metadata is used when script metadata is missing."
 
     Update-PathLengthIndicator -PathText $SourceFolder.Text -Indicator $SourceFolderPathLength -Limit $PathLengthLimit
     Update-PathLengthIndicator -PathText $OutputFolder.Text -Indicator $OutputFolderPathLength -Limit $PathLengthLimit
 
-    # When user types/pastes the source path manually, try to auto-suggest the setup file if found.
-    $SourceFolder.Add_TextChanged({
+    # Updates the hint below the Setup File field: warns when the selected file isn't EXE/MSI,
+    # since the Intune install command then needs to be adjusted to match it (e.g. a .ps1 script).
+    $UpdateSetupFileHint = {
+        param($Path)
+        if (-not $SetupFileHint) { return }
+        $ext = [System.IO.Path]::GetExtension($Path)
+        if ($ext -and $ext -notin @('.exe', '.msi')) {
+            $SetupFileHint.Text = "Note: '$ext' is not EXE/MSI. Make sure your install command in Intune matches this setup file."
+        } else {
+            $SetupFileHint.Text = $DefaultSetupFileHint
+        }
+    }
+
+    $SetupFile.Add_TextChanged({
         param($evtSender, $e)
+        & $UpdateSetupFileHint $SetupFile.Text.Trim()
+    })
+
+    # When user types/pastes the source path manually, try to auto-suggest the setup file if found.
+    # The lookup below recurses the source folder (Set-SetupFromSource), which can be slow on large/network
+    # folders, so it is debounced and only runs once typing pauses instead of on every keystroke.
+    $sourceFolderScanTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $sourceFolderScanTimer.Interval = [TimeSpan]::FromMilliseconds(350)
+    $sourceFolderScanTimer.Add_Tick({
+        $sourceFolderScanTimer.Stop()
         $src = $SourceFolder.Text.Trim()
         if ($src) { Set-SetupFromSource -SourcePath $src -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename }
+    })
+
+    $SourceFolder.Add_TextChanged({
+        param($evtSender, $e)
         Update-PathLengthIndicator -PathText $SourceFolder.Text -Indicator $SourceFolderPathLength -Limit $PathLengthLimit
+        $sourceFolderScanTimer.Stop()
+        $sourceFolderScanTimer.Start()
     })
 
     $updateCheckEnabled = $true
@@ -221,7 +251,7 @@ function Show-IntuneWinAppUtilGUI {
     $BrowseSetup.Add_Click({
         $dialog = New-Object System.Windows.Forms.OpenFileDialog
         try {
-            $dialog.Filter = "Executable or MSI (*.exe;*.msi)|*.exe;*.msi"
+            $dialog.Filter = "Executable or MSI (*.exe;*.msi)|*.exe;*.msi|Script files (*.ps1;*.bat;*.cmd)|*.ps1;*.bat;*.cmd|All files (*.*)|*.*"
             if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 $selectedPath = $dialog.FileName
                 $sourceRoot   = $SourceFolder.Text.Trim()
@@ -354,16 +384,6 @@ function Show-IntuneWinAppUtilGUI {
         if (-not (Test-Path $s)) {
             $s = Join-Path $c $s
             if (-not (Test-Path $s)) { [System.Windows.MessageBox]::Show("Setup file not found.", "Error", "OK", "Error"); return }
-        }
-
-        # Validate extension before running the tool
-        $extSetup = [System.IO.Path]::GetExtension($s).ToLowerInvariant()
-        if ($extSetup -notin @(".exe", ".msi")) {
-            [System.Windows.MessageBox]::Show(
-                "Setup file must be .exe or .msi (got '$extSetup').",
-                "Invalid setup type", "OK", "Error"
-            )
-            return
         }
 
         # Validate output folder
