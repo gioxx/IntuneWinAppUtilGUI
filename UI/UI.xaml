@@ -272,7 +272,7 @@
                                 <TextBox Name="SetupFile" Grid.Column="0" Margin="0,0,10,0"/>
                                 <Button Name="BrowseSetup" Content="Browse..." Grid.Column="1" Width="88"/>
                             </Grid>
-                            <TextBlock
+                            <TextBlock Name="SetupFileHint"
                                 Text="Valid MSI or EXE. PSADT packages are detected automatically; MSI metadata is used when script metadata is missing."
                                 Style="{StaticResource HelpTextStyle}"/>
                         </StackPanel>
