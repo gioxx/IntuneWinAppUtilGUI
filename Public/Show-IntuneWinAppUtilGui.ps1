@@ -114,7 +114,14 @@ function Show-IntuneWinAppUtilGUI {
             $SetupFileHint.Text = $DefaultSetupFileHint
             return
         }
-        $ext = [System.IO.Path]::GetExtension($Path)
+        # GetExtension throws on a path with characters .NET rejects (e.g. a stray '"' while
+        # mid-edit); since this handler runs on every keystroke, treat that as "no extension yet"
+        # rather than letting it surface as an unhandled dispatcher error dialog.
+        try {
+            $ext = [System.IO.Path]::GetExtension($Path)
+        } catch {
+            $ext = ''
+        }
         if ($ext -notin @('.exe', '.msi')) {
             # Extensionless files (e.g. "install") also need the warning: they aren't EXE/MSI either.
             $extLabel = if ($ext) { "'$ext'" } else { 'no extension' }
