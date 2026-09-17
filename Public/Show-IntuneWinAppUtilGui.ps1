@@ -173,15 +173,27 @@ function Show-IntuneWinAppUtilGUI {
     $SourceFolder.Add_TextChanged({
         param($evtSender, $e)
         Update-PathLengthIndicator -PathText $SourceFolder.Text -Indicator $SourceFolderPathLength -Limit $PathLengthLimit
+        # Invalidate any scan already in flight: its result was computed against the old
+        # inputs and must not overwrite what the user is typing now.
+        $script:sourceFolderScanRequestId++
         $sourceFolderScanTimer.Stop()
         $sourceFolderScanTimer.Start()
     })
 
     # Cancel the pending auto-detect scan if the user starts editing Setup File manually,
-    # so it doesn't overwrite their in-progress edit once the timer fires.
+    # so it doesn't overwrite their in-progress edit once the timer fires. Also invalidates
+    # any scan already running, so its result can't clobber this manual edit either.
     $SetupFile.Add_TextChanged({
         param($evtSender, $e)
+        $script:sourceFolderScanRequestId++
         $sourceFolderScanTimer.Stop()
+    })
+
+    # Editing Final Filename manually must also invalidate an in-flight scan, so it can't
+    # overwrite this field once the scan completes.
+    $FinalFilename.Add_TextChanged({
+        param($evtSender, $e)
+        $script:sourceFolderScanRequestId++
     })
 
     $updateCheckEnabled = $true
