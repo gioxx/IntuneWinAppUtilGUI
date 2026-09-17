@@ -381,9 +381,10 @@ function Show-IntuneWinAppUtilGUI {
         if (-not (Test-Path $c)) { [System.Windows.MessageBox]::Show("Invalid source folder path.", "Error", "OK", "Error"); return }
         
         # Validate setup file
-        if (-not (Test-Path $s)) {
+        if (-not $s) { [System.Windows.MessageBox]::Show("Setup file not found.", "Error", "OK", "Error"); return }
+        if (-not (Test-Path $s -PathType Leaf)) {
             $s = Join-Path $c $s
-            if (-not (Test-Path $s)) { [System.Windows.MessageBox]::Show("Setup file not found.", "Error", "OK", "Error"); return }
+            if (-not (Test-Path $s -PathType Leaf)) { [System.Windows.MessageBox]::Show("Setup file not found.", "Error", "OK", "Error"); return }
         }
 
         # Validate output folder
