@@ -110,9 +110,15 @@ function Show-IntuneWinAppUtilGUI {
     $UpdateSetupFileHint = {
         param($Path)
         if (-not $SetupFileHint) { return }
+        if ([string]::IsNullOrWhiteSpace($Path)) {
+            $SetupFileHint.Text = $DefaultSetupFileHint
+            return
+        }
         $ext = [System.IO.Path]::GetExtension($Path)
-        if ($ext -and $ext -notin @('.exe', '.msi')) {
-            $SetupFileHint.Text = "Note: '$ext' is not EXE/MSI. Make sure your install command in Intune matches this setup file."
+        if ($ext -notin @('.exe', '.msi')) {
+            # Extensionless files (e.g. "install") also need the warning: they aren't EXE/MSI either.
+            $extLabel = if ($ext) { "'$ext'" } else { 'no extension' }
+            $SetupFileHint.Text = "Note: $extLabel is not EXE/MSI. Make sure your install command in Intune matches this setup file."
         } else {
             $SetupFileHint.Text = $DefaultSetupFileHint
         }
