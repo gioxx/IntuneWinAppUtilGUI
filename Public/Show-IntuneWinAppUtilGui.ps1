@@ -124,14 +124,50 @@ function Show-IntuneWinAppUtilGUI {
     })
 
     # When user types/pastes the source path manually, try to auto-suggest the setup file if found.
-    # The lookup below recurses the source folder (Set-SetupFromSource), which can be slow on large/network
-    # folders, so it is debounced and only runs once typing pauses instead of on every keystroke.
+    # The lookup (Get-SetupSuggestion) recurses the source folder, which can be slow on large/network
+    # folders, so it is debounced (runs once typing pauses) AND run on a background job, so a slow scan
+    # never freezes the window; only the resulting control updates are marshaled back to the UI thread.
+    $script:sourceFolderScanRequestId = 0
+    $sourceFolderScanJobs = New-Object System.Collections.Generic.List[object]
+
     $sourceFolderScanTimer = New-Object System.Windows.Threading.DispatcherTimer
     $sourceFolderScanTimer.Interval = [TimeSpan]::FromMilliseconds(350)
     $sourceFolderScanTimer.Add_Tick({
         $sourceFolderScanTimer.Stop()
         $src = $SourceFolder.Text.Trim()
-        if ($src) { Set-SetupFromSource -SourcePath $src -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename }
+        if (-not $src) { return }
+
+        $script:sourceFolderScanRequestId++
+        $requestId = $script:sourceFolderScanRequestId
+        $currentSetupFile = $SetupFile.Text
+        $currentFinalFilename = $FinalFilename.Text
+
+        $job = Start-Job -ArgumentList $moduleRoot, $src, $currentSetupFile, $currentFinalFilename -ScriptBlock {
+            param($moduleRoot, $src, $currentSetupFile, $currentFinalFilename)
+            $helperPath = Join-Path $moduleRoot 'Private\IWAPG-Hlp-Setup.ps1'
+            if (-not (Test-Path $helperPath)) { return $null }
+            . $helperPath
+            Get-SetupSuggestion -SourcePath $src -CurrentSetupFile $currentSetupFile -CurrentFinalFilename $currentFinalFilename
+        }
+        $sourceFolderScanJobs.Add($job)
+
+        $pollTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $pollTimer.Interval = [TimeSpan]::FromMilliseconds(100)
+        $pollTimer.Add_Tick({
+            if ($job.State -notin @('Completed', 'Failed', 'Stopped')) { return }
+            $pollTimer.Stop()
+            $suggestion = $null
+            try { $suggestion = Receive-Job $job -ErrorAction SilentlyContinue } catch {}
+            try { Remove-Job $job -Force -ErrorAction SilentlyContinue } catch {}
+            $sourceFolderScanJobs.Remove($job) | Out-Null
+
+            # Discard results from a scan superseded by newer typing.
+            if ($suggestion -and $requestId -eq $script:sourceFolderScanRequestId) {
+                $SetupFile.Text = $suggestion.SetupFile
+                if ($suggestion.FinalFilename) { $FinalFilename.Text = $suggestion.FinalFilename }
+            }
+        }.GetNewClosure())
+        $pollTimer.Start()
     })
 
     $SourceFolder.Add_TextChanged({
@@ -636,6 +672,13 @@ Esc: ask before closing the window.
         try {
             if ($updateCheckTimer) { $updateCheckTimer.Stop() }
             if ($updateCheckJob) { Remove-Job $updateCheckJob -Force -ErrorAction SilentlyContinue }
+            if ($sourceFolderScanTimer) { $sourceFolderScanTimer.Stop() }
+            if ($sourceFolderScanJobs) {
+                foreach ($pendingJob in @($sourceFolderScanJobs)) {
+                    try { Remove-Job $pendingJob -Force -ErrorAction SilentlyContinue } catch {}
+                }
+                $sourceFolderScanJobs.Clear()
+            }
             if (-not (Test-Path (Split-Path $configPath))) {
                 New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
             }
