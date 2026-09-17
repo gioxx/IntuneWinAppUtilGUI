@@ -146,6 +146,10 @@ function Show-IntuneWinAppUtilGUI {
             param($moduleRoot, $src, $currentSetupFile, $currentFinalFilename)
             $helperPath = Join-Path $moduleRoot 'Private\IWAPG-Hlp-Setup.ps1'
             if (-not (Test-Path $helperPath)) { return $null }
+            # A fresh job process hasn't loaded PresentationFramework, but the helper file also
+            # defines Set-SetupFromSource, whose param block references [System.Windows.Controls.TextBox];
+            # without this, dot-sourcing fails before Get-SetupSuggestion can be defined.
+            Add-Type -AssemblyName PresentationFramework -ErrorAction SilentlyContinue
             . $helperPath
             Get-SetupSuggestion -SourcePath $src -CurrentSetupFile $currentSetupFile -CurrentFinalFilename $currentFinalFilename
         }
