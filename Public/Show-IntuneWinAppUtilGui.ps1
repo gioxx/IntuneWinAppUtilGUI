@@ -141,6 +141,13 @@ function Show-IntuneWinAppUtilGUI {
         $sourceFolderScanTimer.Start()
     })
 
+    # Cancel the pending auto-detect scan if the user starts editing Setup File manually,
+    # so it doesn't overwrite their in-progress edit once the timer fires.
+    $SetupFile.Add_TextChanged({
+        param($evtSender, $e)
+        $sourceFolderScanTimer.Stop()
+    })
+
     $updateCheckEnabled = $true
 
     # Preload config.json if it exists
