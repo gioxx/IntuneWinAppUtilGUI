@@ -127,8 +127,23 @@ function Show-IntuneWinAppUtilGUI {
     # The lookup (Get-SetupSuggestion) recurses the source folder, which can be slow on large/network
     # folders, so it is debounced (runs once typing pauses) AND run on a background job, so a slow scan
     # never freezes the window; only the resulting control updates are marshaled back to the UI thread.
-    $script:sourceFolderScanRequestId = 0
+    #
+    # $sourceFolderScanState is a shared, mutable reference (not a scalar variable) so that both plain
+    # event handlers and the .GetNewClosure()'d poll-timer handler below observe the same RequestId:
+    # GetNewClosure() rebinds a scriptblock into its own dynamic module, where a plain "$script:" lookup
+    # would resolve against that private module instead of this one, silently breaking invalidation.
+    $sourceFolderScanState = [pscustomobject]@{ RequestId = 0 }
     $sourceFolderScanJobs = New-Object System.Collections.Generic.List[object]
+
+    # Kills every scan still in flight and forgets it. Called whenever an edit makes their
+    # in-progress results stale, so a slow/large-folder scan doesn't keep running (and consuming
+    # a background PowerShell process) after it can no longer be applied.
+    $sourceFolderScanCancelAll = {
+        foreach ($activeJob in @($sourceFolderScanJobs)) {
+            try { Remove-Job $activeJob -Force -ErrorAction SilentlyContinue } catch {}
+        }
+        $sourceFolderScanJobs.Clear()
+    }
 
     $sourceFolderScanTimer = New-Object System.Windows.Threading.DispatcherTimer
     $sourceFolderScanTimer.Interval = [TimeSpan]::FromMilliseconds(350)
@@ -137,8 +152,8 @@ function Show-IntuneWinAppUtilGUI {
         $src = $SourceFolder.Text.Trim()
         if (-not $src) { return }
 
-        $script:sourceFolderScanRequestId++
-        $requestId = $script:sourceFolderScanRequestId
+        $sourceFolderScanState.RequestId++
+        $requestId = $sourceFolderScanState.RequestId
         $currentSetupFile = $SetupFile.Text
         $currentFinalFilename = $FinalFilename.Text
 
@@ -166,7 +181,7 @@ function Show-IntuneWinAppUtilGUI {
             $sourceFolderScanJobs.Remove($job) | Out-Null
 
             # Discard results from a scan superseded by newer typing.
-            if ($suggestion -and $requestId -eq $script:sourceFolderScanRequestId) {
+            if ($suggestion -and $requestId -eq $sourceFolderScanState.RequestId) {
                 $SetupFile.Text = $suggestion.SetupFile
                 if ($suggestion.FinalFilename) { $FinalFilename.Text = $suggestion.FinalFilename }
             }
@@ -177,27 +192,30 @@ function Show-IntuneWinAppUtilGUI {
     $SourceFolder.Add_TextChanged({
         param($evtSender, $e)
         Update-PathLengthIndicator -PathText $SourceFolder.Text -Indicator $SourceFolderPathLength -Limit $PathLengthLimit
-        # Invalidate any scan already in flight: its result was computed against the old
-        # inputs and must not overwrite what the user is typing now.
-        $script:sourceFolderScanRequestId++
+        # Invalidate (and kill) any scan already in flight: its result was computed against the
+        # old inputs and must not overwrite what the user is typing now.
+        $sourceFolderScanState.RequestId++
+        & $sourceFolderScanCancelAll
         $sourceFolderScanTimer.Stop()
         $sourceFolderScanTimer.Start()
     })
 
     # Cancel the pending auto-detect scan if the user starts editing Setup File manually,
     # so it doesn't overwrite their in-progress edit once the timer fires. Also invalidates
-    # any scan already running, so its result can't clobber this manual edit either.
+    # (and kills) any scan already running, so its result can't clobber this manual edit either.
     $SetupFile.Add_TextChanged({
         param($evtSender, $e)
-        $script:sourceFolderScanRequestId++
+        $sourceFolderScanState.RequestId++
+        & $sourceFolderScanCancelAll
         $sourceFolderScanTimer.Stop()
     })
 
-    # Editing Final Filename manually must also invalidate an in-flight scan, so it can't
-    # overwrite this field once the scan completes.
+    # Editing Final Filename manually must also invalidate (and kill) an in-flight scan, so it
+    # can't overwrite this field once the scan completes.
     $FinalFilename.Add_TextChanged({
         param($evtSender, $e)
-        $script:sourceFolderScanRequestId++
+        $sourceFolderScanState.RequestId++
+        & $sourceFolderScanCancelAll
     })
 
     $updateCheckEnabled = $true
