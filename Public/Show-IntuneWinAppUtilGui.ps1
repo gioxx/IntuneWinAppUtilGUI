@@ -155,7 +155,7 @@ function Show-IntuneWinAppUtilGUI {
     # in-progress results stale, so a slow/large-folder scan doesn't keep running (and consuming
     # a background PowerShell process) after it can no longer be applied.
     $sourceFolderScanCancelAll = {
-        foreach ($activeScan in @($sourceFolderScanJobs)) {
+        foreach ($activeScan in $sourceFolderScanJobs.ToArray()) {
             try { $activeScan.Timer.Stop() } catch {}
             try { Remove-Job $activeScan.Job -Force -ErrorAction SilentlyContinue } catch {}
         }
@@ -732,7 +732,7 @@ Esc: ask before closing the window.
             if ($updateCheckJob) { Remove-Job $updateCheckJob -Force -ErrorAction SilentlyContinue }
             if ($sourceFolderScanTimer) { $sourceFolderScanTimer.Stop() }
             if ($sourceFolderScanJobs) {
-                foreach ($pendingScan in @($sourceFolderScanJobs)) {
+                foreach ($pendingScan in $sourceFolderScanJobs.ToArray()) {
                     try { $pendingScan.Timer.Stop() } catch {}
                     try { Remove-Job $pendingScan.Job -Force -ErrorAction SilentlyContinue } catch {}
                 }
