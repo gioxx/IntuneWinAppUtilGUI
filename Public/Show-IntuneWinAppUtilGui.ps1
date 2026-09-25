@@ -146,14 +146,18 @@ function Show-IntuneWinAppUtilGUI {
     # GetNewClosure() rebinds a scriptblock into its own dynamic module, where a plain "$script:" lookup
     # would resolve against that private module instead of this one, silently breaking invalidation.
     $sourceFolderScanState = [pscustomobject]@{ RequestId = 0 }
+    # Each entry pairs a background job with the DispatcherTimer polling it, so cancelling can
+    # stop the timer too. Leaving an orphaned timer running after its job is force-removed/disposed
+    # made it poll a dead job object forever, throwing on the dispatcher thread on its next tick.
     $sourceFolderScanJobs = New-Object System.Collections.Generic.List[object]
 
     # Kills every scan still in flight and forgets it. Called whenever an edit makes their
     # in-progress results stale, so a slow/large-folder scan doesn't keep running (and consuming
     # a background PowerShell process) after it can no longer be applied.
     $sourceFolderScanCancelAll = {
-        foreach ($activeJob in @($sourceFolderScanJobs)) {
-            try { Remove-Job $activeJob -Force -ErrorAction SilentlyContinue } catch {}
+        foreach ($activeScan in @($sourceFolderScanJobs)) {
+            try { $activeScan.Timer.Stop() } catch {}
+            try { Remove-Job $activeScan.Job -Force -ErrorAction SilentlyContinue } catch {}
         }
         $sourceFolderScanJobs.Clear()
     }
@@ -181,22 +185,29 @@ function Show-IntuneWinAppUtilGUI {
             . $helperPath
             Get-SetupSuggestion -SourcePath $src -CurrentSetupFile $currentSetupFile -CurrentFinalFilename $currentFinalFilename
         }
-        $sourceFolderScanJobs.Add($job)
-
         $pollTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $scanEntry = [pscustomobject]@{ Job = $job; Timer = $pollTimer }
+        $sourceFolderScanJobs.Add($scanEntry)
+
         $pollTimer.Interval = [TimeSpan]::FromMilliseconds(100)
         $pollTimer.Add_Tick({
-            if ($job.State -notin @('Completed', 'Failed', 'Stopped')) { return }
+            try {
+                if ($job.State -notin @('Completed', 'Failed', 'Stopped')) { return }
+            } catch {
+                # Job was force-removed/disposed elsewhere (e.g. cancelAll raced this tick); stop polling it.
+                $pollTimer.Stop()
+                return
+            }
             $pollTimer.Stop()
             $suggestion = $null
             try { $suggestion = Receive-Job $job -ErrorAction SilentlyContinue } catch {}
             try { Remove-Job $job -Force -ErrorAction SilentlyContinue } catch {}
-            $sourceFolderScanJobs.Remove($job) | Out-Null
+            $sourceFolderScanJobs.Remove($scanEntry) | Out-Null
 
             # Discard results from a scan superseded by newer typing.
             if ($suggestion -and $requestId -eq $sourceFolderScanState.RequestId) {
-                $SetupFile.Text = $suggestion.SetupFile
-                if ($suggestion.FinalFilename) { $FinalFilename.Text = $suggestion.FinalFilename }
+                if ($suggestion.SetupFile -is [string]) { $SetupFile.Text = $suggestion.SetupFile }
+                if ($suggestion.FinalFilename -is [string]) { $FinalFilename.Text = $suggestion.FinalFilename }
             }
         }.GetNewClosure())
         $pollTimer.Start()
@@ -721,8 +732,9 @@ Esc: ask before closing the window.
             if ($updateCheckJob) { Remove-Job $updateCheckJob -Force -ErrorAction SilentlyContinue }
             if ($sourceFolderScanTimer) { $sourceFolderScanTimer.Stop() }
             if ($sourceFolderScanJobs) {
-                foreach ($pendingJob in @($sourceFolderScanJobs)) {
-                    try { Remove-Job $pendingJob -Force -ErrorAction SilentlyContinue } catch {}
+                foreach ($pendingScan in @($sourceFolderScanJobs)) {
+                    try { $pendingScan.Timer.Stop() } catch {}
+                    try { Remove-Job $pendingScan.Job -Force -ErrorAction SilentlyContinue } catch {}
                 }
                 $sourceFolderScanJobs.Clear()
             }
