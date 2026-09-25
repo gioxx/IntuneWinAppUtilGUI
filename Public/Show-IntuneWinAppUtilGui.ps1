@@ -189,6 +189,15 @@ function Show-IntuneWinAppUtilGUI {
         $scanEntry = [pscustomobject]@{ Job = $job; Timer = $pollTimer }
         $sourceFolderScanJobs.Add($scanEntry)
 
+        # GetNewClosure() below only reaches variables local to THIS scope (one level up from the
+        # closure) — it does not walk further up into the enclosing function's scope. Without these
+        # aliases, $sourceFolderScanJobs/$sourceFolderScanState/$SetupFile/$FinalFilename would all
+        # resolve to $null inside the poll-timer closure.
+        $scanJobsRef = $sourceFolderScanJobs
+        $scanStateRef = $sourceFolderScanState
+        $setupFileRef = $SetupFile
+        $finalFilenameRef = $FinalFilename
+
         $pollTimer.Interval = [TimeSpan]::FromMilliseconds(100)
         $pollTimer.Add_Tick({
             try {
@@ -202,12 +211,12 @@ function Show-IntuneWinAppUtilGUI {
             $suggestion = $null
             try { $suggestion = Receive-Job $job -ErrorAction SilentlyContinue } catch {}
             try { Remove-Job $job -Force -ErrorAction SilentlyContinue } catch {}
-            $sourceFolderScanJobs.Remove($scanEntry) | Out-Null
+            $scanJobsRef.Remove($scanEntry) | Out-Null
 
             # Discard results from a scan superseded by newer typing.
-            if ($suggestion -and $requestId -eq $sourceFolderScanState.RequestId) {
-                if ($suggestion.SetupFile -is [string]) { $SetupFile.Text = $suggestion.SetupFile }
-                if ($suggestion.FinalFilename -is [string]) { $FinalFilename.Text = $suggestion.FinalFilename }
+            if ($suggestion -and $requestId -eq $scanStateRef.RequestId) {
+                if ($suggestion.SetupFile -is [string]) { $setupFileRef.Text = $suggestion.SetupFile }
+                if ($suggestion.FinalFilename -is [string]) { $finalFilenameRef.Text = $suggestion.FinalFilename }
             }
         }.GetNewClosure())
         $pollTimer.Start()
