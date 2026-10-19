@@ -41,7 +41,7 @@ function Show-IntuneWinAppUtilGUI {
         try {
             $logDir = Join-Path $env:APPDATA 'IntuneWinAppUtilGUI\logs'
             New-Item -Path $logDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
-            $script:IwaDebugLogPath = Join-Path $logDir ("diag-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+            $script:IwaDebugLogPath = Join-Path $logDir ("diag-{0}-{1}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $PID)
             Write-Verbose "[Diagnostics] Log file: $script:IwaDebugLogPath" -Verbose
         } catch {
             Write-Warning "Unable to create the diagnostic log: $($_.Exception.Message)"
@@ -605,9 +605,12 @@ function Show-IntuneWinAppUtilGUI {
 
         # Launch IntuneWinAppUtil.exe
         try {
-            if ($script:IwaDebugLogPath) {
+            $captureOutput = $script:IwaDebugLogPath -and $stagingDir
+            if (-not $captureOutput) { Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs (output not captured: packaging directly into the output folder)" }
+            if ($captureOutput) {
                 # Diagnostics: capture the tool output instead of showing its console window.
-                # -q avoids an invisible "overwrite existing output (Y/N)?" prompt.
+                # -q avoids an invisible "overwrite existing output (Y/N)?" prompt; safe only because the
+                # staging folder is new and empty, so nothing can be overwritten.
                 $toolOut = "$script:IwaDebugLogPath.tool-out.txt"
                 $toolErr = "$script:IwaDebugLogPath.tool-err.txt"
                 Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs -q"
@@ -638,12 +641,15 @@ function Show-IntuneWinAppUtilGUI {
 
         if ($script:IwaDebugLogPath) {
             Write-IwaDebugLog ("Tool exit code: {0} (0x{0:X8})" -f $proc.ExitCode)
-            foreach ($stream in @($toolOut, $toolErr)) {
-                $content = Get-Content -LiteralPath $stream -Raw -ErrorAction SilentlyContinue
-                if ($content) { Write-IwaDebugLog ("Tool output ({0}):`n{1}" -f (Split-Path $stream -Leaf), $content.TrimEnd()) }
-                Remove-Item -LiteralPath $stream -Force -ErrorAction SilentlyContinue
+            if ($captureOutput) {
+                foreach ($stream in @($toolOut, $toolErr)) {
+                    $content = Get-Content -LiteralPath $stream -Raw -ErrorAction SilentlyContinue
+                    if ($content) { Write-IwaDebugLog ("Tool output ({0}):`n{1}" -f (Split-Path $stream -Leaf), $content.TrimEnd()) }
+                    Remove-Item -LiteralPath $stream -Force -ErrorAction SilentlyContinue
+                }
             }
-            if ($proc.ExitCode -ne 0) { Write-IwaDebugFileState -Since $runStart -Folder $packageDir }
+            # Only the staging folder: the output folder may hold many unrelated files.
+            if ($proc.ExitCode -ne 0) { Write-IwaDebugFileState -Since $runStart -Folder $stagingDir }
         }
 
         if ($proc.ExitCode -ne 0) {
@@ -722,13 +728,19 @@ function Show-IntuneWinAppUtilGUI {
 
             } catch {
                 Write-IwaDebugLog "Moving the package failed: $($_.Exception.Message)"
-                Write-IwaDebugFileState -Since $runStart -Folder $packageDir, $o
+                if ($script:IwaDebugLogPath) {
+                    foreach ($pkgFile in @($defaultPath, $fullPath)) {
+                        if ($pkgFile -and (Test-Path -LiteralPath $pkgFile)) {
+                            Write-IwaDebugLog ("  {0} held by: {1}" -f $pkgFile, ((@(Get-FileLockingProcess -Path $pkgFile)) -join ', '))
+                        }
+                    }
+                }
                 [System.Windows.MessageBox]::Show("Moving the package failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
             }
 
         } else {
             Write-IwaDebugLog "Expected package not found: '$defaultPath'"
-            Write-IwaDebugFileState -Since $runStart -Folder $packageDir
+            Write-IwaDebugFileState -Since $runStart -Folder $stagingDir
             if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
             [System.Windows.MessageBox]::Show(
                 "IntuneWinAppUtil finished, but the expected package was not created:`n$defaultName",
