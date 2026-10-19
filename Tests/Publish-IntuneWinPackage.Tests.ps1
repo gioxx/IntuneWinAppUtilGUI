@@ -67,6 +67,18 @@ Describe 'Publish-IntuneWinPackage' {
         (Get-Item $dest).Length | Should -Be 9MB
     }
 
+    It 'keeps a collision suffix within the 255-character name limit' {
+        $longName = ('b' * 245) + '.intunewin'   # 255 characters
+        $dest = Join-Path $output $longName
+        Set-Content -LiteralPath $dest -Value 'existing'
+
+        $published = Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst -MaxAttempts 1
+
+        (Split-Path $published -Leaf).Length | Should -Be 255
+        (Split-Path $published -Leaf) | Should -BeLike '*_1.intunewin'
+        Get-Content -LiteralPath $published | Should -Be 'package'
+    }
+
     It 'returns the published path' {
         $dest = Join-Path $output 'App_1.0.intunewin'
         Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst | Should -Be $dest

@@ -141,6 +141,36 @@ function Show-IntuneWinAppUtilGUI {
         $ProgressBar.Value = 0
         $ProgressPercent.Text = '0%'
     }
+
+    # Result overlay: in-window replacement for the "Package created" message box.
+    $ResultOverlay    = $window.FindName("ResultOverlay")
+    $ResultFileName   = $window.FindName("ResultFileName")
+    $ResultFolder     = $window.FindName("ResultFolder")
+    $ResultNote       = $window.FindName("ResultNote")
+    $ResultOpenFolder = $window.FindName("ResultOpenFolder")
+    $ResultClose      = $window.FindName("ResultClose")
+    $resultState = [pscustomobject]@{ Path = $null }
+
+    $showResult = {
+        param([string]$PackagePath, [string]$Note)
+        $resultState.Path = $PackagePath
+        $ResultFileName.Text = Split-Path $PackagePath -Leaf
+        $ResultFolder.Text = Split-Path $PackagePath -Parent
+        $ResultNote.Text = $Note
+        $ResultNote.Visibility = if ($Note) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        $ResultOverlay.Visibility = [System.Windows.Visibility]::Visible
+        $null = $ResultOpenFolder.Focus()
+    }
+    $hideResult = {
+        $ResultOverlay.Visibility = [System.Windows.Visibility]::Collapsed
+        $resultState.Path = $null
+    }
+    $openResultFolder = {
+        if ($resultState.Path) { Start-Process explorer.exe "/select,`"$($resultState.Path)`"" }
+        & $hideResult
+    }
+    $ResultOpenFolder.Add_Click({ & $openResultFolder })
+    $ResultClose.Add_Click({ & $hideResult })
     $HelpButton      = $window.FindName("HelpButton")
     $ClearButton     = $window.FindName("ClearButton")
     $ExitButton      = $window.FindName("ExitButton")
@@ -741,18 +771,8 @@ function Show-IntuneWinAppUtilGUI {
             $newName = $desiredName
 
             try {
-                # Collision-safe rename (_1, _2, ...)
-                $baseName = [System.IO.Path]::GetFileNameWithoutExtension($newName)
-                $ext      = [System.IO.Path]::GetExtension($newName)
-                $finalName = $newName
-                $counter = 1
-
-                while (Test-Path (Join-Path $o $finalName)) {
-                    $finalName = "$baseName" + "_$counter" + "$ext"
-                    $counter++
-                }
-
-                $fullPath = Join-Path $o $finalName
+                # Publish-IntuneWinPackage picks a free name (_1, _2, ...) if this one is taken.
+                $fullPath = Join-Path $o $newName
 
                 try {
                     & $showProgress 96 'Copying the package to the output folder'
@@ -774,23 +794,8 @@ function Show-IntuneWinAppUtilGUI {
                 & $showProgress 100 'Package created'
                 & $hideProgress
 
-                $msg = "Package created successfully.`n`nFile:`n$finalName"
-                if ($finalName -ne $newName) {
-                    $msg += "`n`nNote: '$newName' already existed, so an incremental suffix was added."
-                }
-                $msg += "`n`nOpen the output folder and select the package?"
-
-                $resp = [System.Windows.MessageBox]::Show(
-                    $window,
-                    $msg,
-                    "Package created",
-                    [System.Windows.MessageBoxButton]::YesNo,
-                    [System.Windows.MessageBoxImage]::Information
-                )
-
-                if ($resp -eq [System.Windows.MessageBoxResult]::Yes) {
-                    Start-Process explorer.exe "/select,`"$fullPath`""
-                }
+                $note = if ($finalName -ne $newName) { "'$newName' already existed, so an incremental suffix was added." } else { $null }
+                & $showResult $fullPath $note
 
             } catch {
                 Write-IwaDebugLog "Moving the package failed: $($_.Exception.Message)"
@@ -876,6 +881,15 @@ Esc: ask before closing the window.
     $window.Add_KeyDown({
         param($evtSender, $e)
         if ($runState.Busy) { $e.Handled = $true; return }
+        if ($ResultOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
+            # Result overlay open: Enter opens the folder, Esc closes it; nothing else reaches the form.
+            switch ($e.Key) {
+                'Return' { & $openResultFolder }
+                'Escape' { & $hideResult }
+            }
+            $e.Handled = $true
+            return
+        }
         switch ($e.Key) {
             'Escape' {
                 $confirmExit = [System.Windows.MessageBox]::Show(

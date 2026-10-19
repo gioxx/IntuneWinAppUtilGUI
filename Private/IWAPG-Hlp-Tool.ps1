@@ -230,7 +230,11 @@ function Publish-IntuneWinPackage {
         $base = [System.IO.Path]::GetFileNameWithoutExtension($Destination)
         $ext  = [System.IO.Path]::GetExtension($Destination)
         $candidate = $Destination
-        for ($n = 1; Test-Path -LiteralPath $candidate; $n++) { $candidate = Join-Path $dir "$base`_$n$ext" }
+        for ($n = 1; Test-Path -LiteralPath $candidate; $n++) {
+            # Keep '<base>_<n><ext>' within the 255-character file name limit by shortening the base.
+            $suffix = "_$n$ext"
+            $candidate = Join-Path $dir ($base.Substring(0, [Math]::Min($base.Length, 255 - $suffix.Length)) + $suffix)
+        }
         Move-Item -LiteralPath $From -Destination $candidate -ErrorAction Stop
         $state.Final = $candidate
     }
