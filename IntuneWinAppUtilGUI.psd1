@@ -1,6 +1,6 @@
 @{
     RootModule           = 'IntuneWinAppUtilGUI.psm1'
-    ModuleVersion        = '1.1.1'
+    ModuleVersion        = '1.1.2'
     GUID                 = '7db79126-1b57-48d2-970a-4795692dfcfc'
     Author               = 'Giovanni Solone'
     Description          = 'GUI wrapper for IntuneWinAppUtil.exe with config file support and WPF interface.'
@@ -21,8 +21,7 @@
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             IconUri      = 'https://raw.githubusercontent.com/gioxx/IntuneWinAppUtilGUI/main/Assets/icon.png'
             ReleaseNotes = @'
-- Fixed: the module failed to import in Windows PowerShell 5.1 because of PowerShell 7-only syntax in the update-check helper (since 1.0.7).
-- Fixed: the PowerShell Gallery update-check fallback now loads System.Net.Http, which Windows PowerShell 5.1 does not load by default.
+- Fixed: when a helper script fails to load, the module import now stops with an error naming the failing file, instead of continuing with missing functions and an empty file name in the message.
 '@
         }
     }
