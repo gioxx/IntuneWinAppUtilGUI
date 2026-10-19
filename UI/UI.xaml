@@ -477,5 +477,58 @@
             </StackPanel>
         </Border>
     </Border>
+
+    <!-- Result overlay shown when a package has been created -->
+    <Border Name="ResultOverlay"
+            Margin="14"
+            CornerRadius="10"
+            Background="#B30F172A"
+            Visibility="Collapsed">
+        <Border Width="460"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="22,20"
+                CornerRadius="10"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.30" Color="#0F172A"/>
+            </Border.Effect>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="#16A34A" VerticalAlignment="Center">
+                        <TextBlock Text="&#x2713;" Foreground="#FFFFFF" FontSize="15" FontWeight="Bold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="Package created"
+                               Margin="10,0,0,0"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource InkBrush}"/>
+                </StackPanel>
+                <TextBlock Name="ResultFileName"
+                           Margin="0,14,0,0"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource InkBrush}"/>
+                <TextBlock Name="ResultFolder"
+                           Margin="0,4,0,0"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}"/>
+                <TextBlock Name="ResultNote"
+                           Margin="0,10,0,0"
+                           TextWrapping="Wrap"
+                           FontSize="11"
+                           Foreground="{StaticResource MutedBrush}"
+                           Visibility="Collapsed"/>
+                <StackPanel Margin="0,18,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Name="ResultOpenFolder" Content="Open folder" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
+                    <Button Name="ResultClose" Content="Close" Width="104"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Border>
     </Grid>
 </Window>
