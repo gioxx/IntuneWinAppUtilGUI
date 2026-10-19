@@ -576,14 +576,16 @@ function Show-IntuneWinAppUtilGUI {
         # Package into a local staging folder, then move the finished file to the output folder:
         # sync clients (Dropbox, OneDrive) and antivirus lock files while IntuneWinAppUtil is still
         # writing them, which makes the tool fail with "access denied".
-        # If the temp volume cannot hold a package as large as the source (plus margin), package
+        # If the temp volume does not have enough free space (see below), package
         # directly into the output folder instead, as before staging was introduced.
         $tempRoot = [System.IO.Path]::GetTempPath()
         $stagingDir = Join-Path $tempRoot ("IntuneWinAppUtilGUI-" + [guid]::NewGuid().ToString('N'))
         try {
             $tempFree = ([System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot($tempRoot))).AvailableFreeSpace
             $sourceBytes = (Get-ChildItem -LiteralPath $c -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-            if ($tempFree -lt ($sourceBytes + 100MB)) { $stagingDir = $null }
+            # IntuneWinAppUtil keeps its own zip and encrypted copy under %TEMP% while writing the
+            # package, so staging needs room for about three source-sized files (incompressible worst case).
+            if ($tempFree -lt (3 * $sourceBytes + 100MB)) { $stagingDir = $null }
         } catch {
             # Free space unknown (e.g. temp on a UNC path): keep staging.
         }
@@ -699,7 +701,8 @@ function Show-IntuneWinAppUtilGUI {
                 $fullPath = Join-Path $o $finalName
 
                 try {
-                    Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst:([bool]$stagingDir)
+                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst:([bool]$stagingDir)
+                    $finalName = Split-Path $fullPath -Leaf
                 } catch {
                     # Keep the staging folder: it holds the only copy of the package.
                     throw "Unable to move the package to '$fullPath' after several attempts. Last error: $($_.Exception.Message)`n`nThe package is still available at:`n$defaultPath"
