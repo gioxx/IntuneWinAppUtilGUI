@@ -16,7 +16,7 @@ Describe 'Publish-IntuneWinPackage' {
         Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst
 
         Get-Content $dest | Should -Be 'package'
-        Test-Path "$dest.partial" | Should -BeFalse
+        Get-ChildItem $output -Recurse -Filter '*.partial' | Should -BeNullOrEmpty
         Test-Path $package | Should -BeFalse
     }
 
@@ -33,7 +33,7 @@ Describe 'Publish-IntuneWinPackage' {
         { Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst -MaxAttempts 1 } | Should -Throw
 
         Test-Path $package | Should -BeTrue
-        Test-Path "$dest.partial" | Should -BeFalse
+        Get-ChildItem $output -Recurse -Filter '*.partial' | Should -BeNullOrEmpty
     }
 
     It 'throws and keeps the staged file when the destination already exists' {
@@ -43,6 +43,6 @@ Describe 'Publish-IntuneWinPackage' {
 
         Get-Content $dest | Should -Be 'existing'
         Test-Path $package | Should -BeTrue
-        Test-Path "$dest.partial" | Should -BeFalse
+        Get-ChildItem $output -Recurse -Filter '*.partial' | Should -BeNullOrEmpty
     }
 }
