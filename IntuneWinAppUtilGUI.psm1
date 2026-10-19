@@ -12,11 +12,13 @@ $script:ModuleRoot = $PSScriptRoot
 # Private helpers
 $privateDir = Join-Path $PSScriptRoot 'Private'
 if (Test-Path $privateDir) {
-    Get-ChildItem -Path $privateDir -Filter '*.ps1' -File | ForEach-Object {
+    # foreach statement (not ForEach-Object): inside catch, $_ is the error, and a throw from a
+    # pipeline script block is reported without stopping the import.
+    foreach ($file in Get-ChildItem -Path $privateDir -Filter '*.ps1' -File) {
         try {
-            . $_.FullName  # dot-source
+            . $file.FullName  # dot-source
         } catch {
-            throw "Failed to load Private script '$($_.Name)': $($_.Exception.Message)"
+            throw "Failed to load Private script '$($file.Name)': $($_.Exception.Message)"
         }
     }
 }
@@ -24,11 +26,11 @@ if (Test-Path $privateDir) {
 # Public entry points
 $publicDir = Join-Path $PSScriptRoot 'Public'
 if (Test-Path $publicDir) {
-    Get-ChildItem -Path $publicDir -Filter '*.ps1' -File | ForEach-Object {
+    foreach ($file in Get-ChildItem -Path $publicDir -Filter '*.ps1' -File) {
         try {
-            . $_.FullName  # dot-source
+            . $file.FullName  # dot-source
         } catch {
-            throw "Failed to load Public script '$($_.Name)': $($_.Exception.Message)"
+            throw "Failed to load Public script '$($file.Name)': $($_.Exception.Message)"
         }
     }
 }
