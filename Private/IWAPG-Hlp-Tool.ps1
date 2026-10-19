@@ -180,7 +180,7 @@ function Publish-IntuneWinPackage {
     Moves a finished .intunewin package to its final path, retrying while the file is locked.
     .DESCRIPTION
     With -CopyFirst (package built in a staging folder, possibly on another volume), the file is
-    copied next to the destination as '<name>.<guid>.partial' and then renamed, so sync clients never see
+    copied next to the destination as '~iwa-<guid>.partial' and then renamed, so sync clients never see
     a half-written file under the final name; the source is deleted only after the rename succeeds.
     Without -CopyFirst the file is simply moved (same-folder rename).
     If the destination name is taken (also by another GUI instance publishing at the same time),
@@ -236,8 +236,9 @@ function Publish-IntuneWinPackage {
         return $state.Final
     }
 
-    # Unique per run, so two GUI instances publishing the same name never share a partial file.
-    $partial = "$Destination.$([guid]::NewGuid().ToString('N')).partial"
+    # Unique per run, so two GUI instances publishing the same name never share a partial file;
+    # short and independent of the final name, so it never exceeds the 255-character name limit.
+    $partial = Join-Path (Split-Path $Destination -Parent) ("~iwa-{0}.partial" -f [guid]::NewGuid().ToString('N'))
     try {
         & $retry { Copy-Item -LiteralPath $Path -Destination $partial -ErrorAction Stop }
         & $retry { & $moveToFreeName $partial }

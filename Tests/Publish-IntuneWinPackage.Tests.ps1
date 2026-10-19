@@ -50,6 +50,12 @@ Describe 'Publish-IntuneWinPackage' {
         Get-ChildItem $output -Recurse -Filter '*.partial' | Should -BeNullOrEmpty
     }
 
+    It 'publishes a final name close to the 255-character limit' {
+        $dest = Join-Path $output (('a' * 240) + '.intunewin')
+        Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst -MaxAttempts 1 | Should -Be $dest
+        Get-Content -LiteralPath $dest | Should -Be 'package'
+    }
+
     It 'returns the published path' {
         $dest = Join-Path $output 'App_1.0.intunewin'
         Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst | Should -Be $dest
