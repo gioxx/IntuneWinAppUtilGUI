@@ -21,9 +21,10 @@
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             IconUri      = 'https://raw.githubusercontent.com/gioxx/IntuneWinAppUtilGUI/main/Assets/icon.png'
             ReleaseNotes = @'
-- Fixed: packaging into a folder synced by Dropbox/OneDrive (or scanned by antivirus) could fail with exit code -2147024891 (access denied). The package is now built in a local temporary folder and moved to the output folder when complete.
-- Improved: IntuneWinAppUtil errors now show the hexadecimal code and the Windows error text, with a hint for access-denied and file-lock errors.
-- Added: -Diag now also writes a detailed log of every packaging run to %APPDATA%\IntuneWinAppUtilGUI\logs, including the IntuneWinAppUtil output and, on failure, the temporary files left behind and the processes holding them open.
+- Fixed: packaging could fail with exit code -2147024891 (0x80070005, access denied) when IntuneWinAppUtil ran in its own console window; the tool now runs without a window and its output is captured (the last lines are shown if it fails).
+- Changed: packages are built in a local temporary folder and copied to the output folder only when complete, so sync clients (Dropbox, OneDrive) never see a partial file. The temporary working folder IntuneWinAppUtil leaves in %TEMP% is removed after a successful run.
+- Improved: IntuneWinAppUtil errors now show the hexadecimal code and the Windows error text.
+- Added: -Diag also writes a detailed log of every packaging run to %APPDATA%\IntuneWinAppUtilGUI\logs, including the tool output and, on failure, the files left behind and the processes holding them open.
 '@
         }
     }

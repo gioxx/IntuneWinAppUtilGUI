@@ -250,6 +250,29 @@ function Publish-IntuneWinPackage {
     $state.Final
 }
 
+function Get-IntuneWinAppUtilTempFolder {
+    <#
+    .SYNOPSIS
+    Lists the working folders IntuneWinAppUtil.exe creates under %TEMP%.
+    .DESCRIPTION
+    The tool works in a GUID-named folder containing 'IntuneWinPackage' and does not always remove it,
+    even after a successful run. Callers take a snapshot before and after a run to find their own folder.
+    .PARAMETER TempPath
+    Folder to scan (default: the user's temp folder).
+    .OUTPUTS
+    [string[]] Full paths.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [string]$TempPath = [System.IO.Path]::GetTempPath()
+    )
+
+    Get-ChildItem -LiteralPath $TempPath -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'IntuneWinPackage')) } |
+        ForEach-Object FullName
+}
+
 function Initialize-IntuneWinAppUtil {
     <#
     .SYNOPSIS

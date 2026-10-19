@@ -605,16 +605,25 @@ function Show-IntuneWinAppUtilGUI {
         # -c = source folder, -s = setup file, -o = staging (or output) folder.
         $iwaArgs = ('-c "{0}" -s "{1}" -o "{2}"' -f $c, $s, $packageDir)
 
+        # Snapshot of the tool's temp working folders, to remove the one this run leaves behind.
+        $toolTempBefore = @(Get-IntuneWinAppUtilTempFolder)
+
         # Launch IntuneWinAppUtil.exe
         try {
-            $captureOutput = $script:IwaDebugLogPath -and $stagingDir
-            if (-not $captureOutput) { Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs (output not captured: packaging directly into the output folder)" }
+            # Run the tool without its own console window and capture its output: started in a new
+            # console window, IntuneWinAppUtil can fail with 0x80070005 (access denied) while replacing
+            # its temporary package, a failure that does not occur with redirected output.
+            $captureOutput = [bool]$stagingDir
+            if (-not $captureOutput) {
+                # shortcut: direct-output fallback (temp volume too small) keeps the console window, because
+                # without -q the tool may ask to overwrite an existing package; revisit if that mode matters.
+                Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs (output not captured: packaging directly into the output folder)"
+            }
             if ($captureOutput) {
-                # Diagnostics: capture the tool output instead of showing its console window.
                 # -q avoids an invisible "overwrite existing output (Y/N)?" prompt; safe only because the
                 # staging folder is new and empty, so nothing can be overwritten.
-                $toolOut = "$script:IwaDebugLogPath.tool-out.txt"
-                $toolErr = "$script:IwaDebugLogPath.tool-err.txt"
+                $toolOut = "$stagingDir.out.txt"
+                $toolErr = "$stagingDir.err.txt"
                 Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs -q"
                 $proc = Start-Process -FilePath $toolPath `
                     -ArgumentList "$iwaArgs -q" `
@@ -641,25 +650,38 @@ function Show-IntuneWinAppUtilGUI {
         }
         $proc.WaitForExit()
 
+        $toolOutput = ''
+        if ($captureOutput) {
+            foreach ($stream in @($toolOut, $toolErr)) {
+                $content = Get-Content -LiteralPath $stream -Raw -ErrorAction SilentlyContinue
+                if ($content) { $toolOutput += $content.TrimEnd() + "`n" }
+                Remove-Item -LiteralPath $stream -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         if ($script:IwaDebugLogPath) {
             Write-IwaDebugLog ("Tool exit code: {0} (0x{0:X8})" -f $proc.ExitCode)
-            if ($captureOutput) {
-                foreach ($stream in @($toolOut, $toolErr)) {
-                    $content = Get-Content -LiteralPath $stream -Raw -ErrorAction SilentlyContinue
-                    if ($content) { Write-IwaDebugLog ("Tool output ({0}):`n{1}" -f (Split-Path $stream -Leaf), $content.TrimEnd()) }
-                    Remove-Item -LiteralPath $stream -Force -ErrorAction SilentlyContinue
-                }
-            }
+            if ($toolOutput) { Write-IwaDebugLog ("Tool output:`n" + $toolOutput.TrimEnd()) }
             # Only the staging folder: the output folder may hold many unrelated files.
             if ($proc.ExitCode -ne 0) { Write-IwaDebugFileState -Since $runStart -Folder $stagingDir }
         }
 
+        # On success, remove the working folder the tool left in %TEMP% (kept on failure for troubleshooting).
+        # shortcut: a folder created by another IntuneWinAppUtil run that started during this one would match
+        # too; if parallel packaging becomes common, read the folder name from the tool output instead.
+        if ($proc.ExitCode -eq 0) {
+            foreach ($toolTemp in @(Get-IntuneWinAppUtilTempFolder | Where-Object { $toolTempBefore -notcontains $_ })) {
+                Remove-Item -LiteralPath $toolTemp -Recurse -Force -ErrorAction SilentlyContinue
+                Write-IwaDebugLog ("Removed tool temp folder '{0}': {1}" -f $toolTemp, (-not (Test-Path -LiteralPath $toolTemp)))
+            }
+        }
+
         if ($proc.ExitCode -ne 0) {
             if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
-            [System.Windows.MessageBox]::Show(
-                (Get-IntuneWinAppUtilExitMessage -ExitCode $proc.ExitCode),
-                "Packaging failed", "OK", "Error"
-            )
+            $failMsg = Get-IntuneWinAppUtilExitMessage -ExitCode $proc.ExitCode
+            $lastLines = @($toolOutput -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 8)
+            if ($lastLines.Count) { $failMsg += "`n`nLast lines of the tool output:`n" + ($lastLines -join "`n") }
+            [System.Windows.MessageBox]::Show($failMsg, "Packaging failed", "OK", "Error")
             return
         }
 
