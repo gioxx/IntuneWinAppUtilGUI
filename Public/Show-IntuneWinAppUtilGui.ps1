@@ -109,6 +109,38 @@ function Show-IntuneWinAppUtilGUI {
     $BrowseTool      = $window.FindName("BrowseTool")
     
     $RunButton       = $window.FindName("RunButton")
+
+    $ProgressOverlay = $window.FindName("ProgressOverlay")
+    $ProgressStep    = $window.FindName("ProgressStep")
+    $ProgressBar     = $window.FindName("ProgressBar")
+    $ProgressPercent = $window.FindName("ProgressPercent")
+
+    # Packaging runs on the UI thread; while it runs, the overlay blocks mouse input and the UI is kept
+    # responsive by letting the dispatcher render between steps. Busy blocks re-entry (Enter), Esc and closing.
+    $runState = [pscustomobject]@{ Busy = $false }
+    # WPF "DoEvents": run a nested message loop until all pending work down to Background priority
+    # (layout, rendering, input, UI Automation) has been processed.
+    $pumpUi = {
+        $frame = New-Object System.Windows.Threading.DispatcherFrame
+        $null = $window.Dispatcher.BeginInvoke(
+            [System.Windows.Threading.DispatcherPriority]::Background,
+            [System.Windows.Threading.DispatcherOperationCallback]{ param($f) $f.Continue = $false; $null },
+            $frame)
+        [System.Windows.Threading.Dispatcher]::PushFrame($frame)
+    }
+    $showProgress = {
+        param([int]$Percent, [string]$Step)
+        $ProgressOverlay.Visibility = [System.Windows.Visibility]::Visible
+        $ProgressBar.Value = $Percent
+        $ProgressPercent.Text = "$Percent%"
+        $ProgressStep.Text = $Step
+        & $pumpUi
+    }
+    $hideProgress = {
+        $ProgressOverlay.Visibility = [System.Windows.Visibility]::Collapsed
+        $ProgressBar.Value = 0
+        $ProgressPercent.Text = '0%'
+    }
     $HelpButton      = $window.FindName("HelpButton")
     $ClearButton     = $window.FindName("ClearButton")
     $ExitButton      = $window.FindName("ExitButton")
@@ -492,7 +524,7 @@ function Show-IntuneWinAppUtilGUI {
     })
 
     # Run button: validate inputs, run IntuneWinAppUtil.exe, rename output if needed
-    $RunButton.Add_Click({
+    $runPackaging = {
         $c = $SourceFolder.Text.Trim() # Source folder
         $s = $SetupFile.Text.Trim()    # Setup file (relative or absolute)
         $o = $OutputFolder.Text.Trim() # Output folder
@@ -533,6 +565,7 @@ function Show-IntuneWinAppUtilGUI {
 
         $runStart = Get-Date
         Write-IwaDebugLog "Run: source '$c', setup '$s', output '$o', final filename '$f'"
+        & $showProgress 1 'Checking the source folder'
 
         $pathWarnings = @()
         if ($c.Length -gt $PathLengthLimit) { $pathWarnings += "Source folder: $($c.Length)/$PathLengthLimit" }
@@ -558,6 +591,7 @@ function Show-IntuneWinAppUtilGUI {
         }
 
         # IntuneWinAppUtil.exe path check (or initialize/download if not set)
+        & $showProgress 1 'Preparing IntuneWinAppUtil'
         $toolPath = Initialize-IntuneWinAppUtil -UiToolPath ($ToolPathBox.Text.Trim())
 
         Write-IwaDebugLog ("Tool: '{0}', version {1}" -f $toolPath, $(if ($toolPath) { Get-ExeVersion -Path $toolPath }))
@@ -641,6 +675,12 @@ function Show-IntuneWinAppUtilGUI {
             )
             return
         }
+        # Wait for the tool while updating the progress overlay from its output.
+        while (-not $proc.HasExited) {
+            $progress = Get-IntuneWinAppUtilProgress -ToolOutput (Read-SharedTextFile -Path $toolOut)
+            & $showProgress $progress.Percent $progress.Step
+            Start-Sleep -Milliseconds 150
+        }
         $proc.WaitForExit()
 
         $toolOutput = ''
@@ -672,6 +712,7 @@ function Show-IntuneWinAppUtilGUI {
             $failMsg = Get-IntuneWinAppUtilExitMessage -ExitCode $proc.ExitCode
             $lastLines = @($toolOutput -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 8)
             if ($lastLines.Count) { $failMsg += "`n`nLast lines of the tool output:`n" + ($lastLines -join "`n") }
+            & $hideProgress
             [System.Windows.MessageBox]::Show($failMsg, "Packaging failed", "OK", "Error")
             return
         }
@@ -714,6 +755,7 @@ function Show-IntuneWinAppUtilGUI {
                 $fullPath = Join-Path $o $finalName
 
                 try {
+                    & $showProgress 96 'Copying the package to the output folder'
                     # Always copy-then-rename: staging and output may be on different volumes (also through
                     # junctions or mount points), where a plain move would expose a partial final file.
                     $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst
@@ -725,6 +767,9 @@ function Show-IntuneWinAppUtilGUI {
 
                 if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
                 Write-IwaDebugLog "Package created: '$fullPath'"
+
+                & $showProgress 100 'Package created'
+                & $hideProgress
 
                 $msg = "Package created successfully.`n`nFile:`n$finalName"
                 if ($finalName -ne $newName) {
@@ -753,6 +798,7 @@ function Show-IntuneWinAppUtilGUI {
                         }
                     }
                 }
+                & $hideProgress
                 [System.Windows.MessageBox]::Show("Moving the package failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
             }
 
@@ -760,10 +806,22 @@ function Show-IntuneWinAppUtilGUI {
             Write-IwaDebugLog "Expected package not found: '$defaultPath'"
             Write-IwaDebugFileState -Since $runStart -Folder $stagingDir
             if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
+            & $hideProgress
             [System.Windows.MessageBox]::Show(
                 "IntuneWinAppUtil finished, but the expected package was not created:`n$defaultName",
                 "Warning", "OK", "Warning"
             )
+        }
+    }
+
+    $RunButton.Add_Click({
+        if ($runState.Busy) { return }
+        $runState.Busy = $true
+        try {
+            & $runPackaging
+        } finally {
+            & $hideProgress
+            $runState.Busy = $false
         }
     })
 
@@ -814,6 +872,7 @@ Esc: ask before closing the window.
     # Keyboard shortcuts: Esc to exit (with confirmation), Enter to run packaging
     $window.Add_KeyDown({
         param($evtSender, $e)
+        if ($runState.Busy) { $e.Handled = $true; return }
         switch ($e.Key) {
             'Escape' {
                 $confirmExit = [System.Windows.MessageBox]::Show(
@@ -831,6 +890,12 @@ Esc: ask before closing the window.
                 $RunButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
             }
         }
+    })
+
+    # Do not close while packaging: the tool and the staging folder would be left behind.
+    $window.Add_Closing({
+        param($evtSender, $e)
+        if ($runState.Busy) { $e.Cancel = $true }
     })
 
     # When the window is closed, save the ToolPath to config.json
