@@ -569,7 +569,7 @@ function Show-IntuneWinAppUtilGUI {
 
         $pathWarnings = @()
         if ($c.Length -gt $PathLengthLimit) { $pathWarnings += "Source folder: $($c.Length)/$PathLengthLimit" }
-        $maxFileInfo = Get-MaxFilePathInfo -RootPath $c
+        $maxFileInfo = Get-MaxFilePathInfo -RootPath $c -OnProgress $pumpUi
         if ($null -ne $maxFileInfo -and $maxFileInfo.Length -gt $PathLengthLimit) {
             $pathWarnings += "Max file path in source: $($maxFileInfo.Length)/$PathLengthLimit"
             $pathWarnings += "Longest path: $($maxFileInfo.Path)"
@@ -617,7 +617,7 @@ function Show-IntuneWinAppUtilGUI {
         $stagingInTemp = $true
         try {
             $tempFree = ([System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot($tempRoot))).AvailableFreeSpace
-            $sourceBytes = (Get-ChildItem -LiteralPath $c -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+            $sourceBytes = if ($maxFileInfo) { $maxFileInfo.TotalBytes } else { 0 }   # from the path-length scan above
             # IntuneWinAppUtil keeps its own zip and encrypted copy under %TEMP% while writing the
             # package, so staging needs room for about three source-sized files (incompressible worst case).
             if ($tempFree -lt (3 * $sourceBytes + 100MB)) {
@@ -758,7 +758,10 @@ function Show-IntuneWinAppUtilGUI {
                     & $showProgress 96 'Copying the package to the output folder'
                     # Always copy-then-rename: staging and output may be on different volumes (also through
                     # junctions or mount points), where a plain move would expose a partial final file.
-                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst
+                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst -OnProgress {
+                        param($copied, $total)
+                        & $showProgress (96 + [int](3 * $copied / [Math]::Max(1, $total))) 'Copying the package to the output folder'
+                    }
                     $finalName = Split-Path $fullPath -Leaf
                 } catch {
                     # Keep the staging folder: it holds the only copy of the package.

@@ -56,6 +56,17 @@ Describe 'Publish-IntuneWinPackage' {
         Get-Content -LiteralPath $dest | Should -Be 'package'
     }
 
+    It 'reports copy progress up to the full size' {
+        [System.IO.File]::WriteAllBytes($package, (New-Object byte[] (9MB)))
+        $dest = Join-Path $output 'App_1.0.intunewin'
+        $reports = [System.Collections.Generic.List[long]]::new()
+        Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst -OnProgress { param($copied, $total) $reports.Add($copied); $total | Should -Be 9MB } | Out-Null
+
+        $reports.Count | Should -Be 3
+        $reports[-1] | Should -Be 9MB
+        (Get-Item $dest).Length | Should -Be 9MB
+    }
+
     It 'returns the published path' {
         $dest = Join-Path $output 'App_1.0.intunewin'
         Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst | Should -Be $dest

@@ -196,6 +196,9 @@ function Publish-IntuneWinPackage {
     Copy under a temporary name, then rename. Use when Path is in a staging folder.
     .PARAMETER MaxAttempts
     Attempts for each step (default 10), with an increasing pause between them.
+    .PARAMETER OnProgress
+    Optional scriptblock called as & $OnProgress <bytesCopied> <totalBytes> after each 4 MB block of the
+    copy (e.g. to update a progress bar and let the UI repaint during a slow copy).
     #>
 
     [CmdletBinding()]
@@ -203,7 +206,8 @@ function Publish-IntuneWinPackage {
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$Destination,
         [switch]$CopyFirst,
-        [int]$MaxAttempts = 10
+        [int]$MaxAttempts = 10,
+        [scriptblock]$OnProgress
     )
 
     # Runs $Action until it succeeds or attempts run out; rethrows the last error.
@@ -240,7 +244,28 @@ function Publish-IntuneWinPackage {
     # short and independent of the final name, so it never exceeds the 255-character name limit.
     $partial = Join-Path (Split-Path $Destination -Parent) ("~iwa-{0}.partial" -f [guid]::NewGuid().ToString('N'))
     try {
-        & $retry { Copy-Item -LiteralPath $Path -Destination $partial -ErrorAction Stop }
+        & $retry {
+            # Block copy so OnProgress can run during large or slow copies; a failed attempt starts over.
+            Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+            $in = [System.IO.File]::OpenRead($Path)
+            try {
+                $out = [System.IO.File]::Open($partial, 'CreateNew', 'Write', 'None')
+                try {
+                    $buffer = New-Object byte[] (4MB)
+                    $total = $in.Length
+                    $copied = [long]0
+                    while (($read = $in.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                        $out.Write($buffer, 0, $read)
+                        $copied += $read
+                        if ($OnProgress) { & $OnProgress $copied $total }
+                    }
+                } finally {
+                    $out.Dispose()
+                }
+            } finally {
+                $in.Dispose()
+            }
+        }
         & $retry { & $moveToFreeName $partial }
     } catch {
         Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
