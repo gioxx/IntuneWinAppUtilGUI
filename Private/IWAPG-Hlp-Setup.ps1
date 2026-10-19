@@ -120,15 +120,17 @@ function Get-MsiPackageMetadata {
     }
 }
 
-function Set-SetupFromSource {
+function Get-SetupSuggestion {
     <#
     .SYNOPSIS
-    Suggests the setup file and (optionally) proposes the final package name from a given source folder.
+    Computes the suggested setup file and (optionally) proposed final package name from a given source folder.
     .DESCRIPTION
+    Pure, UI-free version of the scan performed by Set-SetupFromSource: it touches only the filesystem
+    (and, for MSI metadata, the Windows Installer COM object), never a WPF control. This lets callers run
+    the scan on a background job/runspace and apply the result to controls on the dispatcher thread afterwards.
     - Recursively searches for 'Invoke-AppDeployToolkit.exe' under SourcePath.
-    - If found, populates SetupFileControl with a relative path (via Get-RelativePath) when the exe resides under SourcePath.
-    - Does not overwrite SetupFileControl if it already points to an existing file (absolute or relative to SourcePath).
-    - If 'Invoke-AppDeployToolkit.ps1' exists in the same folder, extracts AppName/AppVersion and sets FinalFilenameControl.Text:
+    - Does not return a suggestion when CurrentSetupFile already points to an existing file (absolute or relative to SourcePath).
+    - If 'Invoke-AppDeployToolkit.ps1' exists in the same folder, extracts AppName/AppVersion for the proposed filename:
         * 'AppName_Version' when both are present;
         * 'AppName' when AppVersion is missing/empty.
     - If the PSADT metadata is missing, falls back to the first MSI found under SourcePath and uses its ProductName/ProductVersion.
@@ -136,31 +138,31 @@ function Set-SetupFromSource {
     - Parsing/IO errors are swallowed.
     .PARAMETER SourcePath
     The source directory to inspect. Must exist.
-    .PARAMETER SetupFileControl
-    The TextBox to populate with the suggested setup path (relative when possible).
-    .PARAMETER FinalFilenameControl
-    The TextBox to populate with the proposed final filename (e.g., 'AppName_Version' or 'AppName').
+    .PARAMETER CurrentSetupFile
+    The current value of the Setup File field (absolute or relative to SourcePath). Optional.
+    .PARAMETER CurrentFinalFilename
+    The current value of the Final Filename field. Optional; when non-empty, FinalFilename is never suggested.
     .OUTPUTS
-    None. Mutates the provided TextBox controls.
+    [pscustomobject] with SetupFile and FinalFilename (either may be $null), or $null when there is nothing to suggest.
     .EXAMPLE
-    Set-SetupFromSource -SourcePath $SourceFolder.Text -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename
+    Get-SetupSuggestion -SourcePath $SourceFolder.Text -CurrentSetupFile $SetupFile.Text -CurrentFinalFilename $FinalFilename.Text
     #>
 
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$SourcePath,
-        [Parameter(Mandatory)][ValidateNotNull()][System.Windows.Controls.TextBox]$SetupFileControl,
-        [Parameter(Mandatory)][ValidateNotNull()][System.Windows.Controls.TextBox]$FinalFilenameControl
+        [string]$CurrentSetupFile,
+        [string]$CurrentFinalFilename
     )
 
-    if (-not (Test-Path $SourcePath)) { return }
+    if (-not (Test-Path $SourcePath)) { return $null }
 
     # If current SetupFile value already points to an existing file (absolute or relative to source), do not override.
-    $current = $SetupFileControl.Text.Trim()
+    $current = if ($CurrentSetupFile) { $CurrentSetupFile.Trim() } else { '' }
     if ($current) {
-        if (Test-Path $current) { return }
+        if (Test-Path $current) { return $null }
         $maybeRelative = Join-Path $SourcePath $current
-        if (Test-Path $maybeRelative) { return }
+        if (Test-Path $maybeRelative) { return $null }
     }
 
     # Search for Invoke-AppDeployToolkit.exe first, and keep an MSI candidate for metadata fallback.
@@ -174,13 +176,17 @@ function Set-SetupFromSource {
         Select-Object -First 1
 
     $selectedHit = if ($exeHit) { $exeHit } else { $msiHit }
-    if ($selectedHit) {
-        # Prefer a relative path when the file is inside the source folder
-        $SetupFileControl.Text = Get-RelativePath -BasePath $SourcePath -TargetPath $selectedHit.FullName
+    if (-not $selectedHit) { return $null }
 
-        # If FinalFilenameControl already has a value, don't override user's input.
-        $finalCurrent = $FinalFilenameControl.Text.Trim()
-        if (-not $finalCurrent) {
+    # Prefer a relative path when the file is inside the source folder
+    $result = [ordered]@{
+        SetupFile     = (Get-RelativePath -BasePath $SourcePath -TargetPath $selectedHit.FullName)
+        FinalFilename = $null
+    }
+
+    # If FinalFilenameControl already has a value, don't override user's input.
+    $finalCurrent = if ($CurrentFinalFilename) { $CurrentFinalFilename.Trim() } else { '' }
+    if (-not $finalCurrent) {
             try {
                 # Look for Invoke-AppDeployToolkit.ps1 in the same folder when we are dealing with PSADT packages.
                 $appName = $null
@@ -229,13 +235,50 @@ function Set-SetupFromSource {
                 if ($cleanName) {
                     $parts = @($cleanName)
                     if ($cleanVer) { $parts += $cleanVer }
-                    $FinalFilenameControl.Text = ($parts -join '_')
+                    $result.FinalFilename = ($parts -join '_')
                 }
                 # else: do nothing when AppName is missing
             }
             catch {
                 # fail silently
             }
-        }
+    }
+
+    [pscustomobject]$result
+}
+
+function Set-SetupFromSource {
+    <#
+    .SYNOPSIS
+    Suggests the setup file and (optionally) proposes the final package name from a given source folder.
+    .DESCRIPTION
+    Thin, synchronous wrapper around Get-SetupSuggestion that applies the suggestion directly to the
+    given WPF controls. Prefer calling Get-SetupSuggestion on a background job/runspace for large or
+    slow (e.g. network) source folders, since the scan it performs is synchronous and recursive.
+    .PARAMETER SourcePath
+    The source directory to inspect. Must exist.
+    .PARAMETER SetupFileControl
+    The TextBox to populate with the suggested setup path (relative when possible).
+    .PARAMETER FinalFilenameControl
+    The TextBox to populate with the proposed final filename (e.g., 'AppName_Version' or 'AppName').
+    .OUTPUTS
+    None. Mutates the provided TextBox controls.
+    .EXAMPLE
+    Set-SetupFromSource -SourcePath $SourceFolder.Text -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$SourcePath,
+        [Parameter(Mandatory)][ValidateNotNull()][System.Windows.Controls.TextBox]$SetupFileControl,
+        [Parameter(Mandatory)][ValidateNotNull()][System.Windows.Controls.TextBox]$FinalFilenameControl
+    )
+
+    $suggestion = Get-SetupSuggestion -SourcePath $SourcePath -CurrentSetupFile $SetupFileControl.Text -CurrentFinalFilename $FinalFilenameControl.Text
+    if (-not $suggestion) { return }
+
+    $SetupFileControl.Text = $suggestion.SetupFile
+    if ($suggestion.FinalFilename) {
+        $FinalFilenameControl.Text = $suggestion.FinalFilename
     }
 }

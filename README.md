@@ -106,7 +106,7 @@ To detect the file regardless of its version, leave the call without `-MinimumVe
 | Field                  | Required | Description |
 |------------------------|----------|-------------|
 | **Source Folder (-c)** | ✅ Yes   | The root folder containing your setup file. |
-| **Setup File (-s)**    | ✅ Yes   | The installer (EXE or MSI). If in same folder, only the filename is shown. |
+| **Setup File (-s)**    | ✅ Yes   | The installer (EXE or MSI, but any file works, e.g. PS1/BAT/CMD for script-based apps). If in same folder, only the filename is shown. |
 | **Output Folder (-o)** | ✅ Yes   | Where the `.intunewin` package will be created. |
 | **IntuneWinAppUtil**   | ✅ Yes\* | You can specify the path manually or let the GUI download the latest version automatically. |
 | **Final Filename**     | Optional | Renames the generated `.intunewin` file. Invalid characters are removed automatically. |
