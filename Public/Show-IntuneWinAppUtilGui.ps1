@@ -160,6 +160,8 @@ function Show-IntuneWinAppUtilGUI {
         $ResultNote.Visibility = if ($Note) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
         $ResultOverlay.Visibility = [System.Windows.Visibility]::Visible
         $null = $ResultOpenFolder.Focus()
+        # Success sound from the user's Windows sound scheme (error message boxes already play their own).
+        try { [System.Media.SystemSounds]::Asterisk.Play() } catch { }
     }
     $hideResult = {
         $ResultOverlay.Visibility = [System.Windows.Visibility]::Collapsed
@@ -776,9 +778,12 @@ function Show-IntuneWinAppUtilGUI {
 
                 try {
                     & $showProgress 96 'Copying the package to the output folder'
-                    # Always copy-then-rename: staging and output may be on different volumes (also through
-                    # junctions or mount points), where a plain move would expose a partial final file.
-                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst -OnProgress {
+                    # Staging in %TEMP%: copy-then-rename, since a cross-volume move would expose a partial
+                    # final file. Fallback staging on the output volume: plain rename, because that volume
+                    # may not have room for a second copy.
+                    # shortcut: if the output folder is a junction/mount point to another volume, the fallback
+                    # rename becomes a copy+delete; detect the backing volume if that setup ever matters.
+                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst:$stagingInTemp -OnProgress {
                         param($copied, $total)
                         & $showProgress (96 + [int](3 * $copied / [Math]::Max(1, $total))) 'Copying the package to the output folder'
                     }
