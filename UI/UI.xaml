@@ -142,6 +142,7 @@
         </Style>
     </Window.Resources>
 
+    <Grid>
     <Border Margin="14"
             Background="{StaticResource PanelBrush}"
             BorderBrush="{StaticResource LineBrush}"
@@ -416,4 +417,65 @@
             </Grid>
         </DockPanel>
     </Border>
+
+    <!-- Progress overlay shown while packaging (covers the window and blocks input) -->
+    <Border Name="ProgressOverlay"
+            Margin="14"
+            CornerRadius="10"
+            Background="#B30F172A"
+            Visibility="Collapsed">
+        <Border Width="440"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="22,20"
+                CornerRadius="10"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.30" Color="#0F172A"/>
+            </Border.Effect>
+            <StackPanel>
+                <TextBlock Name="ProgressTitle"
+                           Text="Creating package"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource InkBrush}"/>
+                <TextBlock Name="ProgressStep"
+                           Margin="0,6,0,14"
+                           Text="Starting..."
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ProgressBar Name="ProgressBar"
+                                 Height="8"
+                                 Minimum="0"
+                                 Maximum="100"
+                                 Value="0"
+                                 Foreground="{StaticResource AccentBrush}"
+                                 Background="{StaticResource SoftPanelBrush}"
+                                 BorderBrush="{StaticResource LineBrush}"
+                                 VerticalAlignment="Center"/>
+                    <TextBlock Name="ProgressPercent"
+                               Grid.Column="1"
+                               Width="44"
+                               Margin="10,0,0,0"
+                               Text="0%"
+                               TextAlignment="Right"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource InkBrush}"
+                               VerticalAlignment="Center"/>
+                </Grid>
+                <TextBlock Margin="0,14,0,0"
+                           Text="Percentages are estimated from the IntuneWinAppUtil progress."
+                           FontSize="11"
+                           Foreground="{StaticResource MutedBrush}"/>
+            </StackPanel>
+        </Border>
+    </Border>
+    </Grid>
 </Window>

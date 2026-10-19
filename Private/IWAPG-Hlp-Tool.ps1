@@ -281,6 +281,84 @@ function Get-IntuneWinAppUtilWorkFolder {
     $null
 }
 
+function Read-SharedTextFile {
+    <#
+    .SYNOPSIS
+    Reads a text file that another process may still be writing; returns '' when it cannot be read.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    try {
+        $fs = [System.IO.FileStream]::new($Path, 'Open', 'Read', ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+        try {
+            $reader = [System.IO.StreamReader]::new($fs)
+            $reader.ReadToEnd()
+        } finally {
+            $fs.Dispose()
+        }
+    } catch {
+        ''
+    }
+}
+
+function Get-IntuneWinAppUtilProgress {
+    <#
+    .SYNOPSIS
+    Estimates packaging progress (0-95%) from the console output IntuneWinAppUtil.exe has written so far.
+    .DESCRIPTION
+    The tool reports steps, not percentages. Fixed steps get fixed values; the two compression steps
+    (the slow ones) advance with the size of the archive being written compared with the folder size
+    the tool prints just before ("Calculated size for folder ... is N"). The remaining 5% is left for
+    publishing the package to the output folder.
+    .PARAMETER ToolOutput
+    Output captured so far.
+    .OUTPUTS
+    [pscustomobject] with Percent ([int]) and Step ([string]).
+    #>
+
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][string]$ToolOutput
+    )
+
+    # Progress inside a compression step, from the size of the archive being written.
+    $compressionShare = {
+        param([string]$Archive)
+        $total = 0
+        $sizes = [regex]::Matches($ToolOutput, 'Calculated size for folder .* is (\d+)')
+        if ($sizes.Count) { $total = [double]$sizes[$sizes.Count - 1].Groups[1].Value }
+        $written = 0
+        try { if ($Archive -and (Test-Path -LiteralPath $Archive)) { $written = (Get-Item -LiteralPath $Archive).Length } } catch { }
+        if ($total -le 0) { return 0 }
+        [Math]::Min(1.0, $written / $total)   # 1.0, not 1: an int literal selects Min(int, int) and truncates
+    }
+
+    $lines = @($ToolOutput -split "`r?`n" | Where-Object { $_ -match '\S' })
+    $last = if ($lines.Count) { $lines[-1] } else { '' }
+
+    switch -Regex ($last) {
+        'Done!!!|has been generated successfully' { return [pscustomobject]@{ Percent = 95; Step = 'Finishing' } }
+        'Removing temporary files|Removed temporary files' { return [pscustomobject]@{ Percent = 94; Step = 'Removing temporary files' } }
+        "Compressing folder '.*' to '|Calculated size for folder .*IntuneWinPackage|Compressed folder '.*IntuneWinPackage'" {
+            $archive = if ($ToolOutput -match "(?m)Compressing folder '.*' to '(?<out>[^']+)'\s*$") { $Matches['out'] } else { $null }
+            return [pscustomobject]@{ Percent = 85 + [int](8 * (& $compressionShare $archive)); Step = 'Building the .intunewin package' }
+        }
+        'detection XML' { return [pscustomobject]@{ Percent = 82; Step = 'Generating the detection metadata' } }
+        'SHA256|Copying encrypted file|got updated' { return [pscustomobject]@{ Percent = 78; Step = 'Verifying the encrypted content' } }
+        'Encrypting|encrypted successfully|Checking file type|Checked file type' { return [pscustomobject]@{ Percent = 72; Step = 'Encrypting the content' } }
+        "Compressing the source folder|Calculated size for folder|Compressed folder" {
+            $archive = if ($ToolOutput -match "Compressing the source folder '.*' to '(?<out>[^']+IntunePackage\.intunewin)'") { $Matches['out'] } else { $null }
+            return [pscustomobject]@{ Percent = 5 + [int](65 * (& $compressionShare $archive)); Step = 'Compressing the source folder' }
+        }
+        'Validat' { return [pscustomobject]@{ Percent = 3; Step = 'Validating parameters' } }
+    }
+    [pscustomobject]@{ Percent = 2; Step = 'Starting IntuneWinAppUtil' }
+}
+
 function Initialize-IntuneWinAppUtil {
     <#
     .SYNOPSIS
