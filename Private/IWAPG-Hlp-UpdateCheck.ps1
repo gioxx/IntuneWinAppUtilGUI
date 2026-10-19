@@ -22,7 +22,7 @@ function Get-PowerShellGalleryModuleVersion {
                 $galleryModule = Find-Module -Name $ModuleName -Repository PSGallery -ErrorAction Stop
                 if ($galleryModule -and $galleryModule.Version) {
                     $latest = [version]$galleryModule.Version
-                    return $Detailed ? [PSCustomObject]@{ Latest = $latest; Error = $null } : $latest
+                    if ($Detailed) { return [PSCustomObject]@{ Latest = $latest; Error = $null } } else { return $latest }
                 }
             } catch {
                 $lastError = $_.Exception.Message
@@ -35,6 +35,9 @@ function Get-PowerShellGalleryModuleVersion {
             [Net.ServicePointManager]::SecurityProtocol = $tls12 -bor [Net.ServicePointManager]::SecurityProtocol
         } catch { }
 
+        # Windows PowerShell 5.1 does not load System.Net.Http by default
+        Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
+
         $url = "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='$ModuleName'"
         $client = New-Object System.Net.Http.HttpClient
         $client.Timeout = [TimeSpan]::FromSeconds($TimeoutSeconds)
@@ -42,13 +45,13 @@ function Get-PowerShellGalleryModuleVersion {
         $resp = $client.GetAsync($url).Result
         if (-not $resp.IsSuccessStatusCode) {
             $lastError = "HTTP $($resp.StatusCode)"
-            return $Detailed ? [PSCustomObject]@{ Latest = $null; Error = $lastError } : $null
+            if ($Detailed) { return [PSCustomObject]@{ Latest = $null; Error = $lastError } } else { return $null }
         }
 
         $content = $resp.Content.ReadAsStringAsync().Result
         if (-not $content) {
             $lastError = "Empty response"
-            return $Detailed ? [PSCustomObject]@{ Latest = $null; Error = $lastError } : $null
+            if ($Detailed) { return [PSCustomObject]@{ Latest = $null; Error = $lastError } } else { return $null }
         }
 
         $xml = [xml]$content
@@ -59,13 +62,13 @@ function Get-PowerShellGalleryModuleVersion {
         }
         if ($versions.Count -eq 0) {
             $lastError = "No versions found"
-            return $Detailed ? [PSCustomObject]@{ Latest = $null; Error = $lastError } : $null
+            if ($Detailed) { return [PSCustomObject]@{ Latest = $null; Error = $lastError } } else { return $null }
         }
         $latest = ($versions | Sort-Object -Descending | Select-Object -First 1)
-        return $Detailed ? [PSCustomObject]@{ Latest = $latest; Error = $null } : $latest
+        if ($Detailed) { return [PSCustomObject]@{ Latest = $latest; Error = $null } } else { return $latest }
     } catch {
         $msg = $_.Exception.Message
-        return $Detailed ? [PSCustomObject]@{ Latest = $null; Error = $msg } : $null
+        if ($Detailed) { return [PSCustomObject]@{ Latest = $null; Error = $msg } } else { return $null }
     } finally {
         if ($client) { $client.Dispose() }
     }
