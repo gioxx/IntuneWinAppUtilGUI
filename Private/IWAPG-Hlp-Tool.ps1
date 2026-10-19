@@ -273,7 +273,9 @@ function Get-IntuneWinAppUtilWorkFolder {
         [string]$TempPath = [System.IO.Path]::GetTempPath()
     )
 
-    if ($ToolOutput -match "\\(?<guid>[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})\\IntuneWinPackage\\Contents\\IntunePackage\.intunewin'") {
+    # Anchored to the end of the "Compressing the source folder" line (the destination field), so a
+    # similar-looking segment inside the source path can never be picked.
+    if ($ToolOutput -match "(?m)Compressing the source folder .*\\(?<guid>[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})\\IntuneWinPackage\\Contents\\IntunePackage\.intunewin'\s*$") {
         return (Join-Path $TempPath $Matches['guid'])
     }
     $null
