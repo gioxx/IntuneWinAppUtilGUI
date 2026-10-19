@@ -140,6 +140,40 @@ function Invoke-DownloadIntuneTool {
     }
 }
 
+function Get-IntuneWinAppUtilExitMessage {
+    <#
+    .SYNOPSIS
+    Builds a readable error message for a non-zero IntuneWinAppUtil.exe exit code.
+    .DESCRIPTION
+    IntuneWinAppUtil returns HRESULTs such as -2147024891 (0x80070005). For Win32 HRESULTs
+    (0x8007xxxx) the Windows error text is added, plus a hint for access-denied and sharing
+    violations, which are usually caused by sync clients or antivirus locking files.
+    .PARAMETER ExitCode
+    The process exit code.
+    .OUTPUTS
+    [string]
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][int]$ExitCode
+    )
+
+    $hex = '0x{0:X8}' -f $ExitCode
+    $msg = "IntuneWinAppUtil exited with code $ExitCode ($hex)."
+
+    if (($ExitCode -band 0xFFFF0000) -eq (0x80070000 -as [int])) {
+        $win32Code = $ExitCode -band 0xFFFF
+        $msg += "`n`n" + ([System.ComponentModel.Win32Exception]::new($win32Code)).Message
+        # 5 = ERROR_ACCESS_DENIED, 32 = ERROR_SHARING_VIOLATION, 33 = ERROR_LOCK_VIOLATION
+        if ($win32Code -in 5, 32, 33) {
+            $msg += "`n`nA file in the source folder may be locked or not readable. Close programs that use it, and pause sync clients (Dropbox, OneDrive) or antivirus scans on the source folder, then try again."
+        }
+    }
+
+    $msg
+}
+
 function Initialize-IntuneWinAppUtil {
     <#
     .SYNOPSIS

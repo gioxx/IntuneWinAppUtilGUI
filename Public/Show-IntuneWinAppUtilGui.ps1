@@ -554,9 +554,20 @@ function Show-IntuneWinAppUtilGUI {
         $ToolPathBox.Text = $toolPath
         Show-ToolVersion -Path $toolPath -Target $ToolVersionText
         
+        # Package into a local staging folder, then move the finished file to the output folder:
+        # sync clients (Dropbox, OneDrive) and antivirus lock files while IntuneWinAppUtil is still
+        # writing them, which makes the tool fail with "access denied".
+        $stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) ("IntuneWinAppUtilGUI-" + [guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -Path $stagingDir -ItemType Directory -Force | Out-Null
+        } catch {
+            [System.Windows.MessageBox]::Show("Unable to create the staging folder:`n$stagingDir`n`n$($_.Exception.Message)", "Error", "OK", "Error")
+            return
+        }
+
         # Build a single, properly-quoted argument string
-        # -c = source folder, -s = setup file (EXE/MSI), -o = output folder.
-        $iwaArgs = ('-c "{0}" -s "{1}" -o "{2}"' -f $c, $s, $o)
+        # -c = source folder, -s = setup file, -o = staging folder.
+        $iwaArgs = ('-c "{0}" -s "{1}" -o "{2}"' -f $c, $s, $stagingDir)
 
         # Launch IntuneWinAppUtil.exe
         try {
@@ -566,6 +577,7 @@ function Show-IntuneWinAppUtilGUI {
                 -WindowStyle Normal `
                 -PassThru
         } catch {
+            Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
             [System.Windows.MessageBox]::Show(
                 "Failed to start IntuneWinAppUtil.exe:`n$($_.Exception.Message)",
                 "Execution error", "OK", "Error"
@@ -575,8 +587,9 @@ function Show-IntuneWinAppUtilGUI {
         $proc.WaitForExit()
 
         if ($proc.ExitCode -ne 0) {
+            Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
             [System.Windows.MessageBox]::Show(
-                "IntuneWinAppUtil exited with code $($proc.ExitCode).",
+                (Get-IntuneWinAppUtilExitMessage -ExitCode $proc.ExitCode),
                 "Packaging failed", "OK", "Error"
             )
             return
@@ -584,7 +597,7 @@ function Show-IntuneWinAppUtilGUI {
 
         # Wait for the output file to appear (up to 10 seconds)
         $defaultName = [System.IO.Path]::GetFileNameWithoutExtension($s) + ".intunewin"
-        $defaultPath = Join-Path $o $defaultName
+        $defaultPath = Join-Path $stagingDir $defaultName
 
         $timeoutSec = 10
         $elapsed = 0
@@ -617,26 +630,29 @@ function Show-IntuneWinAppUtilGUI {
                     $counter++
                 }
 
-                $renameSucceeded = $false
-                $renameError = $null
+                $fullPath = Join-Path $o $finalName
+
+                $moveSucceeded = $false
+                $moveError = $null
                 for ($attempt = 1; $attempt -le 10; $attempt++) {
                     try {
-                        Rename-Item -Path $defaultPath -NewName $finalName -Force
-                        $renameSucceeded = $true
+                        Move-Item -LiteralPath $defaultPath -Destination $fullPath -ErrorAction Stop
+                        $moveSucceeded = $true
                         break
                     } catch {
-                        $renameError = $_.Exception.Message
+                        $moveError = $_.Exception.Message
                         if ($attempt -lt 10) {
                             Start-Sleep -Milliseconds (250 * $attempt)
                         }
                     }
                 }
 
-                if (-not $renameSucceeded) {
-                    throw "Unable to rename '$defaultPath' to '$finalName' after several attempts. Last error: $renameError"
+                if (-not $moveSucceeded) {
+                    # Keep the staging folder: it holds the only copy of the package.
+                    throw "Unable to move the package to '$fullPath' after several attempts. Last error: $moveError`n`nThe package is still available at:`n$defaultPath"
                 }
 
-                $fullPath = Join-Path $o $finalName
+                Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
 
                 $msg = "Package created successfully.`n`nFile:`n$finalName"
                 if ($finalName -ne $newName) {
@@ -657,12 +673,13 @@ function Show-IntuneWinAppUtilGUI {
                 }
 
             } catch {
-                [System.Windows.MessageBox]::Show("Renaming failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
+                [System.Windows.MessageBox]::Show("Moving the package failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
             }
 
         } else {
+            Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
             [System.Windows.MessageBox]::Show(
-                "Output file not found:`n$defaultPath",
+                "IntuneWinAppUtil finished, but the expected package was not created:`n$defaultName",
                 "Warning", "OK", "Warning"
             )
         }
