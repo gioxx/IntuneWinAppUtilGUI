@@ -36,13 +36,22 @@ Describe 'Publish-IntuneWinPackage' {
         Get-ChildItem $output -Recurse -Filter '*.partial' | Should -BeNullOrEmpty
     }
 
-    It 'throws and keeps the staged file when the destination already exists' {
+    It 'publishes under the next free suffix when the destination already exists' {
         $dest = Join-Path $output 'App_1.0.intunewin'
         Set-Content -Path $dest -Value 'existing'
-        { Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst -MaxAttempts 2 } | Should -Throw
+        Set-Content -Path (Join-Path $output 'App_1.0_1.intunewin') -Value 'existing too'
 
+        $published = Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst
+
+        $published | Should -Be (Join-Path $output 'App_1.0_2.intunewin')
+        Get-Content $published | Should -Be 'package'
         Get-Content $dest | Should -Be 'existing'
-        Test-Path $package | Should -BeTrue
+        Test-Path $package | Should -BeFalse
         Get-ChildItem $output -Recurse -Filter '*.partial' | Should -BeNullOrEmpty
+    }
+
+    It 'returns the published path' {
+        $dest = Join-Path $output 'App_1.0.intunewin'
+        Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst | Should -Be $dest
     }
 }

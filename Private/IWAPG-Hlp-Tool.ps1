@@ -183,11 +183,15 @@ function Publish-IntuneWinPackage {
     copied next to the destination as '<name>.<guid>.partial' and then renamed, so sync clients never see
     a half-written file under the final name; the source is deleted only after the rename succeeds.
     Without -CopyFirst the file is simply moved (same-folder rename).
+    If the destination name is taken (also by another GUI instance publishing at the same time),
+    the first free '<name>_1', '<name>_2', ... is used; each attempt picks a free name again.
     Throws when all attempts fail; the source file is never removed in that case.
     .PARAMETER Path
     Full path of the generated package.
     .PARAMETER Destination
-    Full final path of the package (must not exist).
+    Desired final path of the package.
+    .OUTPUTS
+    [string] The path the package was published to.
     .PARAMETER CopyFirst
     Copy under a temporary name, then rename. Use when Path is in a staging folder.
     .PARAMETER MaxAttempts
@@ -214,21 +218,35 @@ function Publish-IntuneWinPackage {
         }
     }
 
+    # Moves $From to the first free name derived from $Destination; the chosen path is kept in $state.
+    $state = @{ Final = $null }
+    $moveToFreeName = {
+        param([string]$From)
+        $dir  = Split-Path $Destination -Parent
+        $base = [System.IO.Path]::GetFileNameWithoutExtension($Destination)
+        $ext  = [System.IO.Path]::GetExtension($Destination)
+        $candidate = $Destination
+        for ($n = 1; Test-Path -LiteralPath $candidate; $n++) { $candidate = Join-Path $dir "$base`_$n$ext" }
+        Move-Item -LiteralPath $From -Destination $candidate -ErrorAction Stop
+        $state.Final = $candidate
+    }
+
     if (-not $CopyFirst) {
-        & $retry { Move-Item -LiteralPath $Path -Destination $Destination -ErrorAction Stop }
-        return
+        & $retry { & $moveToFreeName $Path }
+        return $state.Final
     }
 
     # Unique per run, so two GUI instances publishing the same name never share a partial file.
     $partial = "$Destination.$([guid]::NewGuid().ToString('N')).partial"
     try {
         & $retry { Copy-Item -LiteralPath $Path -Destination $partial -ErrorAction Stop }
-        & $retry { Move-Item -LiteralPath $partial -Destination $Destination -ErrorAction Stop }
+        & $retry { & $moveToFreeName $partial }
     } catch {
         Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
         throw
     }
     Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    $state.Final
 }
 
 function Initialize-IntuneWinAppUtil {
