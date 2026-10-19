@@ -5,7 +5,7 @@ Describe 'IntuneWinAppUtilGUI module' {
     }
 
     It 'has a valid manifest and exports the file version helper' {
-        $module.Version.ToString() | Should -Be '1.1.2'
+        $module.Version.ToString() | Should -Be '1.1.3'
         @($module.ExportedFunctions.Keys) | Should -Contain 'Get-IntuneFileVersion'
     }
 

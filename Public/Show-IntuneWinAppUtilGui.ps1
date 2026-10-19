@@ -35,11 +35,25 @@ function Show-IntuneWinAppUtilGUI {
         return
     }
 
+    # -Diag also writes a detailed log of every packaging run (read by Write-IwaDebugLog).
+    $script:IwaDebugLogPath = $null
     if ($Diag) {
+        try {
+            $logDir = Join-Path $env:APPDATA 'IntuneWinAppUtilGUI\logs'
+            New-Item -Path $logDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
+            $script:IwaDebugLogPath = Join-Path $logDir ("diag-{0}-{1}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $PID)
+            Write-Verbose "[Diagnostics] Log file: $script:IwaDebugLogPath" -Verbose
+        } catch {
+            Write-Warning "Unable to create the diagnostic log: $($_.Exception.Message)"
+        }
+        Write-IwaDebugLog ("Start: module {0}, PowerShell {1} ({2}), {3}, temp '{4}'" -f $MyInvocation.MyCommand.Module.Version, $PSVersionTable.PSVersion, $PSVersionTable.PSEdition, [System.Environment]::OSVersion.VersionString, [System.IO.Path]::GetTempPath())
+
         # Diagnostics: print handles/memory when the GUI starts
         try {
             $p = Get-Process -Id $PID
-            Write-Verbose ("[Diagnostics/Start] Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p.HandleCount, $p.GDIHandles, ($p.WorkingSet64/1KB)) -Verbose
+            $diagLine = "[Diagnostics/Start] Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p.HandleCount, $p.GDIHandles, ($p.WorkingSet64/1KB)
+            Write-Verbose $diagLine -Verbose
+            Write-IwaDebugLog $diagLine
             Write-Verbose "This PowerShell process will be available again when IntuneWinAppUtil GUI closes." -Verbose
         } catch { }
     }
@@ -95,6 +109,70 @@ function Show-IntuneWinAppUtilGUI {
     $BrowseTool      = $window.FindName("BrowseTool")
     
     $RunButton       = $window.FindName("RunButton")
+
+    $ProgressOverlay = $window.FindName("ProgressOverlay")
+    $ProgressStep    = $window.FindName("ProgressStep")
+    $ProgressBar     = $window.FindName("ProgressBar")
+    $ProgressPercent = $window.FindName("ProgressPercent")
+
+    # Packaging runs on the UI thread; while it runs, the overlay blocks mouse input and the UI is kept
+    # responsive by letting the dispatcher render between steps. Busy blocks re-entry (Enter), Esc and closing.
+    $runState = [pscustomobject]@{ Busy = $false }
+    # WPF "DoEvents": run a nested message loop until all pending work down to Background priority
+    # (layout, rendering, input, UI Automation) has been processed.
+    $pumpUi = {
+        $frame = New-Object System.Windows.Threading.DispatcherFrame
+        $null = $window.Dispatcher.BeginInvoke(
+            [System.Windows.Threading.DispatcherPriority]::Background,
+            [System.Windows.Threading.DispatcherOperationCallback]{ param($f) $f.Continue = $false; $null },
+            $frame)
+        [System.Windows.Threading.Dispatcher]::PushFrame($frame)
+    }
+    $showProgress = {
+        param([int]$Percent, [string]$Step)
+        $ProgressOverlay.Visibility = [System.Windows.Visibility]::Visible
+        $ProgressBar.Value = $Percent
+        $ProgressPercent.Text = "$Percent%"
+        $ProgressStep.Text = $Step
+        & $pumpUi
+    }
+    $hideProgress = {
+        $ProgressOverlay.Visibility = [System.Windows.Visibility]::Collapsed
+        $ProgressBar.Value = 0
+        $ProgressPercent.Text = '0%'
+    }
+
+    # Result overlay: in-window replacement for the "Package created" message box.
+    $ResultOverlay    = $window.FindName("ResultOverlay")
+    $ResultFileName   = $window.FindName("ResultFileName")
+    $ResultFolder     = $window.FindName("ResultFolder")
+    $ResultNote       = $window.FindName("ResultNote")
+    $ResultOpenFolder = $window.FindName("ResultOpenFolder")
+    $ResultClose      = $window.FindName("ResultClose")
+    $resultState = [pscustomobject]@{ Path = $null }
+
+    $showResult = {
+        param([string]$PackagePath, [string]$Note)
+        $resultState.Path = $PackagePath
+        $ResultFileName.Text = Split-Path $PackagePath -Leaf
+        $ResultFolder.Text = Split-Path $PackagePath -Parent
+        $ResultNote.Text = $Note
+        $ResultNote.Visibility = if ($Note) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        $ResultOverlay.Visibility = [System.Windows.Visibility]::Visible
+        $null = $ResultOpenFolder.Focus()
+        # Success sound from the user's Windows sound scheme (error message boxes already play their own).
+        try { [System.Media.SystemSounds]::Asterisk.Play() } catch { }
+    }
+    $hideResult = {
+        $ResultOverlay.Visibility = [System.Windows.Visibility]::Collapsed
+        $resultState.Path = $null
+    }
+    $openResultFolder = {
+        if ($resultState.Path) { Start-Process explorer.exe "/select,`"$($resultState.Path)`"" }
+        & $hideResult
+    }
+    $ResultOpenFolder.Add_Click({ & $openResultFolder })
+    $ResultClose.Add_Click({ & $hideResult })
     $HelpButton      = $window.FindName("HelpButton")
     $ClearButton     = $window.FindName("ClearButton")
     $ExitButton      = $window.FindName("ExitButton")
@@ -478,7 +556,7 @@ function Show-IntuneWinAppUtilGUI {
     })
 
     # Run button: validate inputs, run IntuneWinAppUtil.exe, rename output if needed
-    $RunButton.Add_Click({
+    $runPackaging = {
         $c = $SourceFolder.Text.Trim() # Source folder
         $s = $SetupFile.Text.Trim()    # Setup file (relative or absolute)
         $o = $OutputFolder.Text.Trim() # Output folder
@@ -517,15 +595,20 @@ function Show-IntuneWinAppUtilGUI {
             return
         }
 
+        $runStart = Get-Date
+        Write-IwaDebugLog "Run: source '$c', setup '$s', output '$o', final filename '$f'"
+        & $showProgress 1 'Checking the source folder'
+
         $pathWarnings = @()
         if ($c.Length -gt $PathLengthLimit) { $pathWarnings += "Source folder: $($c.Length)/$PathLengthLimit" }
-        $maxFileInfo = Get-MaxFilePathInfo -RootPath $c
+        $maxFileInfo = Get-MaxFilePathInfo -RootPath $c -OnProgress $pumpUi
         if ($null -ne $maxFileInfo -and $maxFileInfo.Length -gt $PathLengthLimit) {
             $pathWarnings += "Max file path in source: $($maxFileInfo.Length)/$PathLengthLimit"
             $pathWarnings += "Longest path: $($maxFileInfo.Path)"
         }
         if ($o.Length -gt $PathLengthLimit) { $pathWarnings += "Output folder: $($o.Length)/$PathLengthLimit" }
         if ($pathWarnings.Count -gt 0) {
+            Write-IwaDebugLog ("Path length warnings:`n" + ($pathWarnings -join "`n"))
             $msg = "Some paths exceed the recommended $PathLengthLimit character limit.`n`n" +
                    ($pathWarnings -join "`n") +
                    "`n`nIntuneWinAppUtil may fail on Windows when paths are too long.`n`nContinue packaging anyway?"
@@ -540,8 +623,10 @@ function Show-IntuneWinAppUtilGUI {
         }
 
         # IntuneWinAppUtil.exe path check (or initialize/download if not set)
+        & $showProgress 1 'Preparing IntuneWinAppUtil'
         $toolPath = Initialize-IntuneWinAppUtil -UiToolPath ($ToolPathBox.Text.Trim())
 
+        Write-IwaDebugLog ("Tool: '{0}', version {1}" -f $toolPath, $(if ($toolPath) { Get-ExeVersion -Path $toolPath }))
         if (-not $toolPath -or -not (Test-Path $toolPath)) {
             [System.Windows.MessageBox]::Show(
                 "IntuneWinAppUtil.exe not found and could not be initialized.",
@@ -554,37 +639,119 @@ function Show-IntuneWinAppUtilGUI {
         $ToolPathBox.Text = $toolPath
         Show-ToolVersion -Path $toolPath -Target $ToolVersionText
         
-        # Build a single, properly-quoted argument string
-        # -c = source folder, -s = setup file (EXE/MSI), -o = output folder.
-        $iwaArgs = ('-c "{0}" -s "{1}" -o "{2}"' -f $c, $s, $o)
+        # Package into a new, empty staging folder, then publish the finished file to the output folder,
+        # so sync clients (Dropbox, OneDrive) never see a partial package. The staging folder is normally
+        # under %TEMP%; if the temp volume lacks space (see below) it goes to the root of the output volume,
+        # outside any synchronized folder, or as a last resort to a hidden subfolder of the output folder.
+        $runId = [guid]::NewGuid().ToString('N')
+        $tempRoot = [System.IO.Path]::GetTempPath()
+        $stagingDir = Join-Path $tempRoot "IntuneWinAppUtilGUI-$runId"
+        $stagingInTemp = $true
+        try {
+            $tempFree = ([System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot($tempRoot))).AvailableFreeSpace
+            $sourceBytes = if ($maxFileInfo) { $maxFileInfo.TotalBytes } else { 0 }   # from the path-length scan above
+            # IntuneWinAppUtil keeps its own zip and encrypted copy under %TEMP% while writing the
+            # package, so staging needs room for about three source-sized files (incompressible worst case).
+            if ($tempFree -lt (3 * $sourceBytes + 100MB)) {
+                $stagingDir = Join-Path ([System.IO.Path]::GetPathRoot($o)) "IntuneWinAppUtilGUI-staging-$runId"
+                $stagingInTemp = $false
+            }
+        } catch {
+            # Free space unknown (e.g. temp on a UNC path): keep staging in %TEMP%.
+        }
 
-        # Launch IntuneWinAppUtil.exe
+        try {
+            $stagingItem = $null
+            try {
+                $stagingItem = New-Item -Path $stagingDir -ItemType Directory -Force -ErrorAction Stop
+            } catch {
+                if ($stagingInTemp) { throw }
+                # Volume root not writable (or a share root): last resort, hidden subfolder of the output folder.
+                $stagingDir = Join-Path $o "~iwa-staging-$runId"
+                $stagingItem = New-Item -Path $stagingDir -ItemType Directory -Force -ErrorAction Stop
+                $stagingItem.Attributes = $stagingItem.Attributes -bor [System.IO.FileAttributes]::Hidden
+            }
+        } catch {
+            [System.Windows.MessageBox]::Show("Unable to create the staging folder:`n$stagingDir`n`n$($_.Exception.Message)", "Error", "OK", "Error")
+            return
+        }
+        $packageDir = $stagingDir
+        Write-IwaDebugLog ("Staging folder: '{0}' ({1}); temp free {2:N0} MB, source {3:N0} MB" -f $stagingDir, $(if ($stagingInTemp) { 'temp' } else { 'output volume' }), ($tempFree / 1MB), ($sourceBytes / 1MB))
+
+        # Build a single, properly-quoted argument string
+        # -c = source folder, -s = setup file, -o = staging folder.
+        # -q avoids an "overwrite existing output (Y/N)?" prompt the hidden tool could not show;
+        # nothing can be overwritten because the staging folder is new and empty.
+        $iwaArgs = ('-c "{0}" -s "{1}" -o "{2}" -q' -f $c, $s, $stagingDir)
+
+        # Launch IntuneWinAppUtil.exe without its own console window, capturing its output: started in a
+        # new console window, the tool can fail with 0x80070005 (access denied) while replacing its
+        # temporary package, a failure that does not occur with redirected output.
+        $toolOut = Join-Path $tempRoot "IntuneWinAppUtilGUI-$runId.out.txt"
+        $toolErr = Join-Path $tempRoot "IntuneWinAppUtilGUI-$runId.err.txt"
+        Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs"
         try {
             $proc = Start-Process -FilePath $toolPath `
                 -ArgumentList $iwaArgs `
                 -WorkingDirectory (Split-Path $toolPath) `
-                -WindowStyle Normal `
+                -NoNewWindow `
+                -RedirectStandardOutput $toolOut `
+                -RedirectStandardError $toolErr `
                 -PassThru
         } catch {
+            Write-IwaDebugLog "Failed to start the tool: $($_.Exception.Message)"
+            Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
             [System.Windows.MessageBox]::Show(
                 "Failed to start IntuneWinAppUtil.exe:`n$($_.Exception.Message)",
                 "Execution error", "OK", "Error"
             )
             return
         }
+        # Wait for the tool while updating the progress overlay from its output.
+        while (-not $proc.HasExited) {
+            $progress = Get-IntuneWinAppUtilProgress -ToolOutput (Read-SharedTextFile -Path $toolOut)
+            & $showProgress $progress.Percent $progress.Step
+            Start-Sleep -Milliseconds 150
+        }
         $proc.WaitForExit()
 
+        $toolOutput = ''
+        foreach ($stream in @($toolOut, $toolErr)) {
+            $content = Get-Content -LiteralPath $stream -Raw -ErrorAction SilentlyContinue
+            if ($content) { $toolOutput += $content.TrimEnd() + "`n" }
+            Remove-Item -LiteralPath $stream -Force -ErrorAction SilentlyContinue
+        }
+
+        if ($script:IwaDebugLogPath) {
+            Write-IwaDebugLog ("Tool exit code: {0} (0x{0:X8})" -f $proc.ExitCode)
+            if ($toolOutput) { Write-IwaDebugLog ("Tool output:`n" + $toolOutput.TrimEnd()) }
+            # Only the staging folder: the output folder may hold many unrelated files.
+            if ($proc.ExitCode -ne 0) { Write-IwaDebugFileState -Since $runStart -Folder $stagingDir }
+        }
+
+        # On success, remove the working folder this run of the tool may leave in %TEMP%
+        # (kept on failure for troubleshooting). Its path is read from the tool's own output.
+        if ($proc.ExitCode -eq 0) {
+            $toolWork = Get-IntuneWinAppUtilWorkFolder -ToolOutput $toolOutput
+            if ($toolWork -and (Test-Path -LiteralPath $toolWork)) {
+                Remove-Item -LiteralPath $toolWork -Recurse -Force -ErrorAction SilentlyContinue
+                Write-IwaDebugLog ("Removed tool work folder '{0}': {1}" -f $toolWork, (-not (Test-Path -LiteralPath $toolWork)))
+            }
+        }
+
         if ($proc.ExitCode -ne 0) {
-            [System.Windows.MessageBox]::Show(
-                "IntuneWinAppUtil exited with code $($proc.ExitCode).",
-                "Packaging failed", "OK", "Error"
-            )
+            if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
+            $failMsg = Get-IntuneWinAppUtilExitMessage -ExitCode $proc.ExitCode
+            $lastLines = @($toolOutput -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 8)
+            if ($lastLines.Count) { $failMsg += "`n`nLast lines of the tool output:`n" + ($lastLines -join "`n") }
+            & $hideProgress
+            [System.Windows.MessageBox]::Show($failMsg, "Packaging failed", "OK", "Error")
             return
         }
 
         # Wait for the output file to appear (up to 10 seconds)
         $defaultName = [System.IO.Path]::GetFileNameWithoutExtension($s) + ".intunewin"
-        $defaultPath = Join-Path $o $defaultName
+        $defaultPath = Join-Path $packageDir $defaultName
 
         $timeoutSec = 10
         $elapsed = 0
@@ -606,65 +773,68 @@ function Show-IntuneWinAppUtilGUI {
             $newName = $desiredName
 
             try {
-                # Collision-safe rename (_1, _2, ...)
-                $baseName = [System.IO.Path]::GetFileNameWithoutExtension($newName)
-                $ext      = [System.IO.Path]::GetExtension($newName)
-                $finalName = $newName
-                $counter = 1
+                # Publish-IntuneWinPackage picks a free name (_1, _2, ...) if this one is taken.
+                $fullPath = Join-Path $o $newName
 
-                while (Test-Path (Join-Path $o $finalName)) {
-                    $finalName = "$baseName" + "_$counter" + "$ext"
-                    $counter++
+                try {
+                    & $showProgress 96 'Copying the package to the output folder'
+                    # Staging in %TEMP%: copy-then-rename, since a cross-volume move would expose a partial
+                    # final file. Fallback staging on the output volume: plain rename, because that volume
+                    # may not have room for a second copy.
+                    # shortcut: if the output folder is a junction/mount point to another volume, the fallback
+                    # rename becomes a copy+delete; detect the backing volume if that setup ever matters.
+                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst:$stagingInTemp -OnProgress {
+                        param($copied, $total)
+                        & $showProgress (96 + [int](3 * $copied / [Math]::Max(1, $total))) 'Copying the package to the output folder'
+                    }
+                    $finalName = Split-Path $fullPath -Leaf
+                } catch {
+                    # Keep the staging folder: it holds the only copy of the package.
+                    throw "Unable to move the package to '$fullPath' after several attempts. Last error: $($_.Exception.Message)`n`nThe package is still available at:`n$defaultPath"
                 }
 
-                $renameSucceeded = $false
-                $renameError = $null
-                for ($attempt = 1; $attempt -le 10; $attempt++) {
-                    try {
-                        Rename-Item -Path $defaultPath -NewName $finalName -Force
-                        $renameSucceeded = $true
-                        break
-                    } catch {
-                        $renameError = $_.Exception.Message
-                        if ($attempt -lt 10) {
-                            Start-Sleep -Milliseconds (250 * $attempt)
+                if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
+                Write-IwaDebugLog "Package created: '$fullPath'"
+
+                & $showProgress 100 'Package created'
+                & $hideProgress
+
+                $note = if ($finalName -ne $newName) { "'$newName' already existed, so an incremental suffix was added." } else { $null }
+                & $showResult $fullPath $note
+
+            } catch {
+                Write-IwaDebugLog "Moving the package failed: $($_.Exception.Message)"
+                if ($script:IwaDebugLogPath) {
+                    foreach ($pkgFile in @($defaultPath, $fullPath)) {
+                        if ($pkgFile -and (Test-Path -LiteralPath $pkgFile)) {
+                            Write-IwaDebugLog ("  {0} held by: {1}" -f $pkgFile, ((@(Get-FileLockingProcess -Path $pkgFile)) -join ', '))
                         }
                     }
                 }
-
-                if (-not $renameSucceeded) {
-                    throw "Unable to rename '$defaultPath' to '$finalName' after several attempts. Last error: $renameError"
-                }
-
-                $fullPath = Join-Path $o $finalName
-
-                $msg = "Package created successfully.`n`nFile:`n$finalName"
-                if ($finalName -ne $newName) {
-                    $msg += "`n`nNote: '$newName' already existed, so an incremental suffix was added."
-                }
-                $msg += "`n`nOpen the output folder and select the package?"
-
-                $resp = [System.Windows.MessageBox]::Show(
-                    $window,
-                    $msg,
-                    "Package created",
-                    [System.Windows.MessageBoxButton]::YesNo,
-                    [System.Windows.MessageBoxImage]::Information
-                )
-
-                if ($resp -eq [System.Windows.MessageBoxResult]::Yes) {
-                    Start-Process explorer.exe "/select,`"$fullPath`""
-                }
-
-            } catch {
-                [System.Windows.MessageBox]::Show("Renaming failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
+                & $hideProgress
+                [System.Windows.MessageBox]::Show("Moving the package failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
             }
 
         } else {
+            Write-IwaDebugLog "Expected package not found: '$defaultPath'"
+            Write-IwaDebugFileState -Since $runStart -Folder $stagingDir
+            if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
+            & $hideProgress
             [System.Windows.MessageBox]::Show(
-                "Output file not found:`n$defaultPath",
+                "IntuneWinAppUtil finished, but the expected package was not created:`n$defaultName",
                 "Warning", "OK", "Warning"
             )
+        }
+    }
+
+    $RunButton.Add_Click({
+        if ($runState.Busy) { return }
+        $runState.Busy = $true
+        try {
+            & $runPackaging
+        } finally {
+            & $hideProgress
+            $runState.Busy = $false
         }
     })
 
@@ -688,7 +858,7 @@ Show-IntuneWinAppUtilGUI -ForceUpdateBanner
 Simulates an available update banner for testing the notification area.
 
 Show-IntuneWinAppUtilGUI -Diag
-Writes startup and shutdown diagnostics, such as handles, GDI handles and memory usage.
+Writes startup and shutdown diagnostics (handles, GDI handles, memory usage) and a detailed log of every packaging run, including the tool output and any locked files, to %APPDATA%\IntuneWinAppUtilGUI\logs.
 
 Standard PowerShell switches
 -Verbose and -Debug are preserved when the GUI relaunches itself in STA mode.
@@ -715,6 +885,16 @@ Esc: ask before closing the window.
     # Keyboard shortcuts: Esc to exit (with confirmation), Enter to run packaging
     $window.Add_KeyDown({
         param($evtSender, $e)
+        if ($runState.Busy) { $e.Handled = $true; return }
+        if ($ResultOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
+            # Result overlay open: Enter opens the folder, Esc closes it; nothing else reaches the form.
+            switch ($e.Key) {
+                'Return' { & $openResultFolder }
+                'Escape' { & $hideResult }
+            }
+            $e.Handled = $true
+            return
+        }
         switch ($e.Key) {
             'Escape' {
                 $confirmExit = [System.Windows.MessageBox]::Show(
@@ -732,6 +912,12 @@ Esc: ask before closing the window.
                 $RunButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
             }
         }
+    })
+
+    # Do not close while packaging: the tool and the staging folder would be left behind.
+    $window.Add_Closing({
+        param($evtSender, $e)
+        if ($runState.Busy) { $e.Cancel = $true }
     })
 
     # When the window is closed, save the ToolPath to config.json
@@ -798,7 +984,9 @@ Esc: ask before closing the window.
         # Diagnostics: print handles/memory after the GUI closes
         try {
             $p2 = Get-Process -Id $PID
-            Write-Verbose ("[Diagnostics/End]   Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p2.HandleCount, $p2.GDIHandles, ($p2.WorkingSet64/1KB)) -Verbose
+            $diagLine = "[Diagnostics/End]   Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p2.HandleCount, $p2.GDIHandles, ($p2.WorkingSet64/1KB)
+            Write-Verbose $diagLine -Verbose
+            Write-IwaDebugLog $diagLine
         } catch { }
     }
 }
