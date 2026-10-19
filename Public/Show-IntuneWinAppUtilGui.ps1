@@ -714,7 +714,9 @@ function Show-IntuneWinAppUtilGUI {
                 $fullPath = Join-Path $o $finalName
 
                 try {
-                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst:$stagingInTemp
+                    # Always copy-then-rename: staging and output may be on different volumes (also through
+                    # junctions or mount points), where a plain move would expose a partial final file.
+                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst
                     $finalName = Split-Path $fullPath -Leaf
                 } catch {
                     # Keep the staging folder: it holds the only copy of the package.

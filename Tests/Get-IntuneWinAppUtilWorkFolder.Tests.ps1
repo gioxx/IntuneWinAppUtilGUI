@@ -18,6 +18,11 @@ INFO   Done!!!
         Get-IntuneWinAppUtilWorkFolder -ToolOutput $output -TempPath 'C:\Temp' | Should -Be 'C:\Temp\0f8fad5b-d9cb-469f-a165-70867728950e'
     }
 
+    It 'takes the destination GUID even when the source path contains a look-alike segment' {
+        $output = "INFO   Compressing the source folder 'C:\Temp\11111111-2222-3333-4444-555555555555\IntuneWinPackage\Contents\IntunePackage.intunewin' to 'C:\Temp\0f8fad5b-d9cb-469f-a165-70867728950e\IntuneWinPackage\Contents\IntunePackage.intunewin'"
+        Get-IntuneWinAppUtilWorkFolder -ToolOutput $output -TempPath 'C:\Temp' | Should -Be 'C:\Temp\0f8fad5b-d9cb-469f-a165-70867728950e'
+    }
+
     It 'returns nothing when the folder name is not a GUID' {
         $output = "INFO   Compressing the source folder 'C:\Src' to 'C:\Temp\work\IntuneWinPackage\Contents\IntunePackage.intunewin'"
         Get-IntuneWinAppUtilWorkFolder -ToolOutput $output | Should -BeNullOrEmpty
