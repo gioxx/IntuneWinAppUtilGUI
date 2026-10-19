@@ -573,75 +573,59 @@ function Show-IntuneWinAppUtilGUI {
         $ToolPathBox.Text = $toolPath
         Show-ToolVersion -Path $toolPath -Target $ToolVersionText
         
-        # Package into a local staging folder, then move the finished file to the output folder:
-        # sync clients (Dropbox, OneDrive) and antivirus lock files while IntuneWinAppUtil is still
-        # writing them, which makes the tool fail with "access denied".
-        # If the temp volume does not have enough free space (see below), package
-        # directly into the output folder instead, as before staging was introduced.
+        # Package into a new, empty staging folder, then publish the finished file to the output folder,
+        # so sync clients (Dropbox, OneDrive) never see a partial package. The staging folder is normally
+        # under %TEMP%; if the temp volume lacks space (see below) it is a hidden subfolder of the output folder.
+        $runId = [guid]::NewGuid().ToString('N')
         $tempRoot = [System.IO.Path]::GetTempPath()
-        $stagingDir = Join-Path $tempRoot ("IntuneWinAppUtilGUI-" + [guid]::NewGuid().ToString('N'))
+        $stagingDir = Join-Path $tempRoot "IntuneWinAppUtilGUI-$runId"
+        $stagingInTemp = $true
         try {
             $tempFree = ([System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot($tempRoot))).AvailableFreeSpace
             $sourceBytes = (Get-ChildItem -LiteralPath $c -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
             # IntuneWinAppUtil keeps its own zip and encrypted copy under %TEMP% while writing the
             # package, so staging needs room for about three source-sized files (incompressible worst case).
-            if ($tempFree -lt (3 * $sourceBytes + 100MB)) { $stagingDir = $null }
+            if ($tempFree -lt (3 * $sourceBytes + 100MB)) {
+                $stagingDir = Join-Path $o "~iwa-staging-$runId"
+                $stagingInTemp = $false
+            }
         } catch {
-            # Free space unknown (e.g. temp on a UNC path): keep staging.
+            # Free space unknown (e.g. temp on a UNC path): keep staging in %TEMP%.
         }
 
-        if ($stagingDir) {
-            try {
-                New-Item -Path $stagingDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
-            } catch {
-                [System.Windows.MessageBox]::Show("Unable to create the staging folder:`n$stagingDir`n`n$($_.Exception.Message)", "Error", "OK", "Error")
-                return
-            }
+        try {
+            $stagingItem = New-Item -Path $stagingDir -ItemType Directory -Force -ErrorAction Stop
+            if (-not $stagingInTemp) { $stagingItem.Attributes = $stagingItem.Attributes -bor [System.IO.FileAttributes]::Hidden }
+        } catch {
+            [System.Windows.MessageBox]::Show("Unable to create the staging folder:`n$stagingDir`n`n$($_.Exception.Message)", "Error", "OK", "Error")
+            return
         }
-        $packageDir = if ($stagingDir) { $stagingDir } else { $o }
-        Write-IwaDebugLog ("Package folder: '{0}' ({1}); temp free {2:N0} MB, source {3:N0} MB" -f $packageDir, $(if ($stagingDir) { 'staging' } else { 'direct output' }), ($tempFree / 1MB), ($sourceBytes / 1MB))
+        $packageDir = $stagingDir
+        Write-IwaDebugLog ("Staging folder: '{0}' ({1}); temp free {2:N0} MB, source {3:N0} MB" -f $stagingDir, $(if ($stagingInTemp) { 'temp' } else { 'inside output folder' }), ($tempFree / 1MB), ($sourceBytes / 1MB))
 
         # Build a single, properly-quoted argument string
-        # -c = source folder, -s = setup file, -o = staging (or output) folder.
-        $iwaArgs = ('-c "{0}" -s "{1}" -o "{2}"' -f $c, $s, $packageDir)
+        # -c = source folder, -s = setup file, -o = staging folder.
+        # -q avoids an "overwrite existing output (Y/N)?" prompt the hidden tool could not show;
+        # nothing can be overwritten because the staging folder is new and empty.
+        $iwaArgs = ('-c "{0}" -s "{1}" -o "{2}" -q' -f $c, $s, $stagingDir)
 
-        # Snapshot of the tool's temp working folders, to remove the one this run leaves behind.
-        $toolTempBefore = @(Get-IntuneWinAppUtilTempFolder)
-
-        # Launch IntuneWinAppUtil.exe
+        # Launch IntuneWinAppUtil.exe without its own console window, capturing its output: started in a
+        # new console window, the tool can fail with 0x80070005 (access denied) while replacing its
+        # temporary package, a failure that does not occur with redirected output.
+        $toolOut = Join-Path $tempRoot "IntuneWinAppUtilGUI-$runId.out.txt"
+        $toolErr = Join-Path $tempRoot "IntuneWinAppUtilGUI-$runId.err.txt"
+        Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs"
         try {
-            # Run the tool without its own console window and capture its output: started in a new
-            # console window, IntuneWinAppUtil can fail with 0x80070005 (access denied) while replacing
-            # its temporary package, a failure that does not occur with redirected output.
-            $captureOutput = [bool]$stagingDir
-            if (-not $captureOutput) {
-                # shortcut: direct-output fallback (temp volume too small) keeps the console window, because
-                # without -q the tool may ask to overwrite an existing package; revisit if that mode matters.
-                Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs (output not captured: packaging directly into the output folder)"
-            }
-            if ($captureOutput) {
-                # -q avoids an invisible "overwrite existing output (Y/N)?" prompt; safe only because the
-                # staging folder is new and empty, so nothing can be overwritten.
-                $toolOut = "$stagingDir.out.txt"
-                $toolErr = "$stagingDir.err.txt"
-                Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs -q"
-                $proc = Start-Process -FilePath $toolPath `
-                    -ArgumentList "$iwaArgs -q" `
-                    -WorkingDirectory (Split-Path $toolPath) `
-                    -NoNewWindow `
-                    -RedirectStandardOutput $toolOut `
-                    -RedirectStandardError $toolErr `
-                    -PassThru
-            } else {
-                $proc = Start-Process -FilePath $toolPath `
-                    -ArgumentList $iwaArgs `
-                    -WorkingDirectory (Split-Path $toolPath) `
-                    -WindowStyle Normal `
-                    -PassThru
-            }
+            $proc = Start-Process -FilePath $toolPath `
+                -ArgumentList $iwaArgs `
+                -WorkingDirectory (Split-Path $toolPath) `
+                -NoNewWindow `
+                -RedirectStandardOutput $toolOut `
+                -RedirectStandardError $toolErr `
+                -PassThru
         } catch {
             Write-IwaDebugLog "Failed to start the tool: $($_.Exception.Message)"
-            if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
+            Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
             [System.Windows.MessageBox]::Show(
                 "Failed to start IntuneWinAppUtil.exe:`n$($_.Exception.Message)",
                 "Execution error", "OK", "Error"
@@ -651,12 +635,10 @@ function Show-IntuneWinAppUtilGUI {
         $proc.WaitForExit()
 
         $toolOutput = ''
-        if ($captureOutput) {
-            foreach ($stream in @($toolOut, $toolErr)) {
-                $content = Get-Content -LiteralPath $stream -Raw -ErrorAction SilentlyContinue
-                if ($content) { $toolOutput += $content.TrimEnd() + "`n" }
-                Remove-Item -LiteralPath $stream -Force -ErrorAction SilentlyContinue
-            }
+        foreach ($stream in @($toolOut, $toolErr)) {
+            $content = Get-Content -LiteralPath $stream -Raw -ErrorAction SilentlyContinue
+            if ($content) { $toolOutput += $content.TrimEnd() + "`n" }
+            Remove-Item -LiteralPath $stream -Force -ErrorAction SilentlyContinue
         }
 
         if ($script:IwaDebugLogPath) {
@@ -666,13 +648,13 @@ function Show-IntuneWinAppUtilGUI {
             if ($proc.ExitCode -ne 0) { Write-IwaDebugFileState -Since $runStart -Folder $stagingDir }
         }
 
-        # On success, remove the working folder the tool left in %TEMP% (kept on failure for troubleshooting).
-        # shortcut: a folder created by another IntuneWinAppUtil run that started during this one would match
-        # too; if parallel packaging becomes common, read the folder name from the tool output instead.
+        # On success, remove the working folder this run of the tool may leave in %TEMP%
+        # (kept on failure for troubleshooting). Its path is read from the tool's own output.
         if ($proc.ExitCode -eq 0) {
-            foreach ($toolTemp in @(Get-IntuneWinAppUtilTempFolder | Where-Object { $toolTempBefore -notcontains $_ })) {
-                Remove-Item -LiteralPath $toolTemp -Recurse -Force -ErrorAction SilentlyContinue
-                Write-IwaDebugLog ("Removed tool temp folder '{0}': {1}" -f $toolTemp, (-not (Test-Path -LiteralPath $toolTemp)))
+            $toolWork = Get-IntuneWinAppUtilWorkFolder -ToolOutput $toolOutput
+            if ($toolWork -and (Test-Path -LiteralPath $toolWork)) {
+                Remove-Item -LiteralPath $toolWork -Recurse -Force -ErrorAction SilentlyContinue
+                Write-IwaDebugLog ("Removed tool work folder '{0}': {1}" -f $toolWork, (-not (Test-Path -LiteralPath $toolWork)))
             }
         }
 
@@ -723,7 +705,7 @@ function Show-IntuneWinAppUtilGUI {
                 $fullPath = Join-Path $o $finalName
 
                 try {
-                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst:([bool]$stagingDir)
+                    $fullPath = Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst:$stagingInTemp
                     $finalName = Split-Path $fullPath -Leaf
                 } catch {
                     # Keep the staging folder: it holds the only copy of the package.

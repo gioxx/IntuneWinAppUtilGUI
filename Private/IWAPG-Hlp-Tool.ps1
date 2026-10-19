@@ -250,27 +250,32 @@ function Publish-IntuneWinPackage {
     $state.Final
 }
 
-function Get-IntuneWinAppUtilTempFolder {
+function Get-IntuneWinAppUtilWorkFolder {
     <#
     .SYNOPSIS
-    Lists the working folders IntuneWinAppUtil.exe creates under %TEMP%.
+    Returns the working folder a run of IntuneWinAppUtil.exe used, read from its console output.
     .DESCRIPTION
-    The tool works in a GUID-named folder containing 'IntuneWinPackage' and does not always remove it,
-    even after a successful run. Callers take a snapshot before and after a run to find their own folder.
-    .PARAMETER TempPath
-    Folder to scan (default: the user's temp folder).
+    The tool compresses the source into '<work>\IntuneWinPackage\Contents\IntunePackage.intunewin',
+    where <work> is a GUID-named folder under %TEMP% that it does not always remove. The path is
+    taken from the "Compressing the source folder '...' to '...'" line, so only this run's folder is
+    returned, never one belonging to another run.
+    .PARAMETER ToolOutput
+    Captured standard output of the tool.
     .OUTPUTS
-    [string[]] Full paths.
+    [string] Full path of the work folder, or $null when it cannot be determined.
     #>
 
     [CmdletBinding()]
     param(
-        [string]$TempPath = [System.IO.Path]::GetTempPath()
+        [AllowEmptyString()][string]$ToolOutput
     )
 
-    Get-ChildItem -LiteralPath $TempPath -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'IntuneWinPackage')) } |
-        ForEach-Object FullName
+    if ($ToolOutput -match "Compressing the source folder '[^']*' to '(?<pkg>[^']+)\\IntuneWinPackage\\Contents\\IntunePackage\.intunewin'") {
+        $work = $Matches['pkg']
+        # Safety net: only a GUID-named folder (the tool's own naming) is ever returned for deletion.
+        if ((Split-Path $work -Leaf) -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') { return $work }
+    }
+    $null
 }
 
 function Initialize-IntuneWinAppUtil {
