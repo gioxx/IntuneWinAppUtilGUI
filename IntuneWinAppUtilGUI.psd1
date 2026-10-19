@@ -1,6 +1,6 @@
 @{
     RootModule           = 'IntuneWinAppUtilGUI.psm1'
-    ModuleVersion        = '1.1.0'
+    ModuleVersion        = '1.1.1'
     GUID                 = '7db79126-1b57-48d2-970a-4795692dfcfc'
     Author               = 'Giovanni Solone'
     Description          = 'GUI wrapper for IntuneWinAppUtil.exe with config file support and WPF interface.'
@@ -21,8 +21,8 @@
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             IconUri      = 'https://raw.githubusercontent.com/gioxx/IntuneWinAppUtilGUI/main/Assets/icon.png'
             ReleaseNotes = @'
-- Added: Setup File field now accepts any file type (e.g. PS1/BAT/CMD scripts), not just EXE/MSI. Browse dialog offers script/all-files filters, with a hint shown for non-EXE/MSI selections.
-- Fixed: Source Folder field caused input lag while typing, due to a recursive filesystem scan running on every keystroke; the scan is now debounced.
+- Fixed: the module failed to import in Windows PowerShell 5.1 because of PowerShell 7-only syntax in the update-check helper (since 1.0.7).
+- Fixed: the PowerShell Gallery update-check fallback now loads System.Net.Http, which Windows PowerShell 5.1 does not load by default.
 '@
         }
     }
