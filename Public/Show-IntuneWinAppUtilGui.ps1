@@ -35,11 +35,25 @@ function Show-IntuneWinAppUtilGUI {
         return
     }
 
+    # -Diag also writes a detailed log of every packaging run (read by Write-IwaDebugLog).
+    $script:IwaDebugLogPath = $null
     if ($Diag) {
+        try {
+            $logDir = Join-Path $env:APPDATA 'IntuneWinAppUtilGUI\logs'
+            New-Item -Path $logDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
+            $script:IwaDebugLogPath = Join-Path $logDir ("diag-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+            Write-Verbose "[Diagnostics] Log file: $script:IwaDebugLogPath" -Verbose
+        } catch {
+            Write-Warning "Unable to create the diagnostic log: $($_.Exception.Message)"
+        }
+        Write-IwaDebugLog ("Start: module {0}, PowerShell {1} ({2}), {3}, temp '{4}'" -f $MyInvocation.MyCommand.Module.Version, $PSVersionTable.PSVersion, $PSVersionTable.PSEdition, [System.Environment]::OSVersion.VersionString, [System.IO.Path]::GetTempPath())
+
         # Diagnostics: print handles/memory when the GUI starts
         try {
             $p = Get-Process -Id $PID
-            Write-Verbose ("[Diagnostics/Start] Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p.HandleCount, $p.GDIHandles, ($p.WorkingSet64/1KB)) -Verbose
+            $diagLine = "[Diagnostics/Start] Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p.HandleCount, $p.GDIHandles, ($p.WorkingSet64/1KB)
+            Write-Verbose $diagLine -Verbose
+            Write-IwaDebugLog $diagLine
             Write-Verbose "This PowerShell process will be available again when IntuneWinAppUtil GUI closes." -Verbose
         } catch { }
     }
@@ -517,6 +531,9 @@ function Show-IntuneWinAppUtilGUI {
             return
         }
 
+        $runStart = Get-Date
+        Write-IwaDebugLog "Run: source '$c', setup '$s', output '$o', final filename '$f'"
+
         $pathWarnings = @()
         if ($c.Length -gt $PathLengthLimit) { $pathWarnings += "Source folder: $($c.Length)/$PathLengthLimit" }
         $maxFileInfo = Get-MaxFilePathInfo -RootPath $c
@@ -526,6 +543,7 @@ function Show-IntuneWinAppUtilGUI {
         }
         if ($o.Length -gt $PathLengthLimit) { $pathWarnings += "Output folder: $($o.Length)/$PathLengthLimit" }
         if ($pathWarnings.Count -gt 0) {
+            Write-IwaDebugLog ("Path length warnings:`n" + ($pathWarnings -join "`n"))
             $msg = "Some paths exceed the recommended $PathLengthLimit character limit.`n`n" +
                    ($pathWarnings -join "`n") +
                    "`n`nIntuneWinAppUtil may fail on Windows when paths are too long.`n`nContinue packaging anyway?"
@@ -542,6 +560,7 @@ function Show-IntuneWinAppUtilGUI {
         # IntuneWinAppUtil.exe path check (or initialize/download if not set)
         $toolPath = Initialize-IntuneWinAppUtil -UiToolPath ($ToolPathBox.Text.Trim())
 
+        Write-IwaDebugLog ("Tool: '{0}', version {1}" -f $toolPath, $(if ($toolPath) { Get-ExeVersion -Path $toolPath }))
         if (-not $toolPath -or -not (Test-Path $toolPath)) {
             [System.Windows.MessageBox]::Show(
                 "IntuneWinAppUtil.exe not found and could not be initialized.",
@@ -578,6 +597,7 @@ function Show-IntuneWinAppUtilGUI {
             }
         }
         $packageDir = if ($stagingDir) { $stagingDir } else { $o }
+        Write-IwaDebugLog ("Package folder: '{0}' ({1}); temp free {2:N0} MB, source {3:N0} MB" -f $packageDir, $(if ($stagingDir) { 'staging' } else { 'direct output' }), ($tempFree / 1MB), ($sourceBytes / 1MB))
 
         # Build a single, properly-quoted argument string
         # -c = source folder, -s = setup file, -o = staging (or output) folder.
@@ -585,12 +605,28 @@ function Show-IntuneWinAppUtilGUI {
 
         # Launch IntuneWinAppUtil.exe
         try {
-            $proc = Start-Process -FilePath $toolPath `
-                -ArgumentList $iwaArgs `
-                -WorkingDirectory (Split-Path $toolPath) `
-                -WindowStyle Normal `
-                -PassThru
+            if ($script:IwaDebugLogPath) {
+                # Diagnostics: capture the tool output instead of showing its console window.
+                # -q avoids an invisible "overwrite existing output (Y/N)?" prompt.
+                $toolOut = "$script:IwaDebugLogPath.tool-out.txt"
+                $toolErr = "$script:IwaDebugLogPath.tool-err.txt"
+                Write-IwaDebugLog "Command: `"$toolPath`" $iwaArgs -q"
+                $proc = Start-Process -FilePath $toolPath `
+                    -ArgumentList "$iwaArgs -q" `
+                    -WorkingDirectory (Split-Path $toolPath) `
+                    -NoNewWindow `
+                    -RedirectStandardOutput $toolOut `
+                    -RedirectStandardError $toolErr `
+                    -PassThru
+            } else {
+                $proc = Start-Process -FilePath $toolPath `
+                    -ArgumentList $iwaArgs `
+                    -WorkingDirectory (Split-Path $toolPath) `
+                    -WindowStyle Normal `
+                    -PassThru
+            }
         } catch {
+            Write-IwaDebugLog "Failed to start the tool: $($_.Exception.Message)"
             if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
             [System.Windows.MessageBox]::Show(
                 "Failed to start IntuneWinAppUtil.exe:`n$($_.Exception.Message)",
@@ -599,6 +635,16 @@ function Show-IntuneWinAppUtilGUI {
             return
         }
         $proc.WaitForExit()
+
+        if ($script:IwaDebugLogPath) {
+            Write-IwaDebugLog ("Tool exit code: {0} (0x{0:X8})" -f $proc.ExitCode)
+            foreach ($stream in @($toolOut, $toolErr)) {
+                $content = Get-Content -LiteralPath $stream -Raw -ErrorAction SilentlyContinue
+                if ($content) { Write-IwaDebugLog ("Tool output ({0}):`n{1}" -f (Split-Path $stream -Leaf), $content.TrimEnd()) }
+                Remove-Item -LiteralPath $stream -Force -ErrorAction SilentlyContinue
+            }
+            if ($proc.ExitCode -ne 0) { Write-IwaDebugFileState -Since $runStart -Folder $packageDir }
+        }
 
         if ($proc.ExitCode -ne 0) {
             if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
@@ -654,6 +700,7 @@ function Show-IntuneWinAppUtilGUI {
                 }
 
                 if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
+                Write-IwaDebugLog "Package created: '$fullPath'"
 
                 $msg = "Package created successfully.`n`nFile:`n$finalName"
                 if ($finalName -ne $newName) {
@@ -674,10 +721,14 @@ function Show-IntuneWinAppUtilGUI {
                 }
 
             } catch {
+                Write-IwaDebugLog "Moving the package failed: $($_.Exception.Message)"
+                Write-IwaDebugFileState -Since $runStart -Folder $packageDir, $o
                 [System.Windows.MessageBox]::Show("Moving the package failed: $($_.Exception.Message)", "Warning", "OK", "Warning")
             }
 
         } else {
+            Write-IwaDebugLog "Expected package not found: '$defaultPath'"
+            Write-IwaDebugFileState -Since $runStart -Folder $packageDir
             if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }
             [System.Windows.MessageBox]::Show(
                 "IntuneWinAppUtil finished, but the expected package was not created:`n$defaultName",
@@ -706,7 +757,7 @@ Show-IntuneWinAppUtilGUI -ForceUpdateBanner
 Simulates an available update banner for testing the notification area.
 
 Show-IntuneWinAppUtilGUI -Diag
-Writes startup and shutdown diagnostics, such as handles, GDI handles and memory usage.
+Writes startup and shutdown diagnostics (handles, GDI handles, memory usage) and a detailed log of every packaging run, including the tool output and any locked files, to %APPDATA%\IntuneWinAppUtilGUI\logs.
 
 Standard PowerShell switches
 -Verbose and -Debug are preserved when the GUI relaunches itself in STA mode.
@@ -816,7 +867,9 @@ Esc: ask before closing the window.
         # Diagnostics: print handles/memory after the GUI closes
         try {
             $p2 = Get-Process -Id $PID
-            Write-Verbose ("[Diagnostics/End]   Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p2.HandleCount, $p2.GDIHandles, ($p2.WorkingSet64/1KB)) -Verbose
+            $diagLine = "[Diagnostics/End]   Handles: {0}, GDI: {1}, WS: {2:N0} KB" -f $p2.HandleCount, $p2.GDIHandles, ($p2.WorkingSet64/1KB)
+            Write-Verbose $diagLine -Verbose
+            Write-IwaDebugLog $diagLine
         } catch { }
     }
 }

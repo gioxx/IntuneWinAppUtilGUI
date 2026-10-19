@@ -23,6 +23,7 @@
             ReleaseNotes = @'
 - Fixed: packaging into a folder synced by Dropbox/OneDrive (or scanned by antivirus) could fail with exit code -2147024891 (access denied). The package is now built in a local temporary folder and moved to the output folder when complete.
 - Improved: IntuneWinAppUtil errors now show the hexadecimal code and the Windows error text, with a hint for access-denied and file-lock errors.
+- Added: -Diag now also writes a detailed log of every packaging run to %APPDATA%\IntuneWinAppUtilGUI\logs, including the IntuneWinAppUtil output and, on failure, the temporary files left behind and the processes holding them open.
 '@
         }
     }
