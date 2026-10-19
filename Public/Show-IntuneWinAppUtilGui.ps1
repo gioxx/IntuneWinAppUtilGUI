@@ -575,7 +575,8 @@ function Show-IntuneWinAppUtilGUI {
         
         # Package into a new, empty staging folder, then publish the finished file to the output folder,
         # so sync clients (Dropbox, OneDrive) never see a partial package. The staging folder is normally
-        # under %TEMP%; if the temp volume lacks space (see below) it is a hidden subfolder of the output folder.
+        # under %TEMP%; if the temp volume lacks space (see below) it goes to the root of the output volume,
+        # outside any synchronized folder, or as a last resort to a hidden subfolder of the output folder.
         $runId = [guid]::NewGuid().ToString('N')
         $tempRoot = [System.IO.Path]::GetTempPath()
         $stagingDir = Join-Path $tempRoot "IntuneWinAppUtilGUI-$runId"
@@ -586,7 +587,7 @@ function Show-IntuneWinAppUtilGUI {
             # IntuneWinAppUtil keeps its own zip and encrypted copy under %TEMP% while writing the
             # package, so staging needs room for about three source-sized files (incompressible worst case).
             if ($tempFree -lt (3 * $sourceBytes + 100MB)) {
-                $stagingDir = Join-Path $o "~iwa-staging-$runId"
+                $stagingDir = Join-Path ([System.IO.Path]::GetPathRoot($o)) "IntuneWinAppUtilGUI-staging-$runId"
                 $stagingInTemp = $false
             }
         } catch {
@@ -594,14 +595,22 @@ function Show-IntuneWinAppUtilGUI {
         }
 
         try {
-            $stagingItem = New-Item -Path $stagingDir -ItemType Directory -Force -ErrorAction Stop
-            if (-not $stagingInTemp) { $stagingItem.Attributes = $stagingItem.Attributes -bor [System.IO.FileAttributes]::Hidden }
+            $stagingItem = $null
+            try {
+                $stagingItem = New-Item -Path $stagingDir -ItemType Directory -Force -ErrorAction Stop
+            } catch {
+                if ($stagingInTemp) { throw }
+                # Volume root not writable (or a share root): last resort, hidden subfolder of the output folder.
+                $stagingDir = Join-Path $o "~iwa-staging-$runId"
+                $stagingItem = New-Item -Path $stagingDir -ItemType Directory -Force -ErrorAction Stop
+                $stagingItem.Attributes = $stagingItem.Attributes -bor [System.IO.FileAttributes]::Hidden
+            }
         } catch {
             [System.Windows.MessageBox]::Show("Unable to create the staging folder:`n$stagingDir`n`n$($_.Exception.Message)", "Error", "OK", "Error")
             return
         }
         $packageDir = $stagingDir
-        Write-IwaDebugLog ("Staging folder: '{0}' ({1}); temp free {2:N0} MB, source {3:N0} MB" -f $stagingDir, $(if ($stagingInTemp) { 'temp' } else { 'inside output folder' }), ($tempFree / 1MB), ($sourceBytes / 1MB))
+        Write-IwaDebugLog ("Staging folder: '{0}' ({1}); temp free {2:N0} MB, source {3:N0} MB" -f $stagingDir, $(if ($stagingInTemp) { 'temp' } else { 'output volume' }), ($tempFree / 1MB), ($sourceBytes / 1MB))
 
         # Build a single, properly-quoted argument string
         # -c = source folder, -s = setup file, -o = staging folder.
