@@ -646,24 +646,11 @@ function Show-IntuneWinAppUtilGUI {
 
                 $fullPath = Join-Path $o $finalName
 
-                $moveSucceeded = $false
-                $moveError = $null
-                for ($attempt = 1; $attempt -le 10; $attempt++) {
-                    try {
-                        Move-Item -LiteralPath $defaultPath -Destination $fullPath -ErrorAction Stop
-                        $moveSucceeded = $true
-                        break
-                    } catch {
-                        $moveError = $_.Exception.Message
-                        if ($attempt -lt 10) {
-                            Start-Sleep -Milliseconds (250 * $attempt)
-                        }
-                    }
-                }
-
-                if (-not $moveSucceeded) {
+                try {
+                    Publish-IntuneWinPackage -Path $defaultPath -Destination $fullPath -CopyFirst:([bool]$stagingDir)
+                } catch {
                     # Keep the staging folder: it holds the only copy of the package.
-                    throw "Unable to move the package to '$fullPath' after several attempts. Last error: $moveError`n`nThe package is still available at:`n$defaultPath"
+                    throw "Unable to move the package to '$fullPath' after several attempts. Last error: $($_.Exception.Message)`n`nThe package is still available at:`n$defaultPath"
                 }
 
                 if ($stagingDir) { Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue }

@@ -174,6 +174,62 @@ function Get-IntuneWinAppUtilExitMessage {
     $msg
 }
 
+function Publish-IntuneWinPackage {
+    <#
+    .SYNOPSIS
+    Moves a finished .intunewin package to its final path, retrying while the file is locked.
+    .DESCRIPTION
+    With -CopyFirst (package built in a staging folder, possibly on another volume), the file is
+    copied next to the destination as '<name>.partial' and then renamed, so sync clients never see
+    a half-written file under the final name; the source is deleted only after the rename succeeds.
+    Without -CopyFirst the file is simply moved (same-folder rename).
+    Throws when all attempts fail; the source file is never removed in that case.
+    .PARAMETER Path
+    Full path of the generated package.
+    .PARAMETER Destination
+    Full final path of the package (must not exist).
+    .PARAMETER CopyFirst
+    Copy under a temporary name, then rename. Use when Path is in a staging folder.
+    .PARAMETER MaxAttempts
+    Attempts for each step (default 10), with an increasing pause between them.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Destination,
+        [switch]$CopyFirst,
+        [int]$MaxAttempts = 10
+    )
+
+    # Runs $Action until it succeeds or attempts run out; rethrows the last error.
+    $retry = {
+        param([scriptblock]$Action)
+        for ($attempt = 1; ; $attempt++) {
+            try { & $Action; return }
+            catch {
+                if ($attempt -ge $MaxAttempts) { throw }
+                Start-Sleep -Milliseconds (250 * $attempt)
+            }
+        }
+    }
+
+    if (-not $CopyFirst) {
+        & $retry { Move-Item -LiteralPath $Path -Destination $Destination -ErrorAction Stop }
+        return
+    }
+
+    $partial = "$Destination.partial"
+    try {
+        & $retry { Copy-Item -LiteralPath $Path -Destination $partial -Force -ErrorAction Stop }
+        & $retry { Move-Item -LiteralPath $partial -Destination $Destination -ErrorAction Stop }
+    } catch {
+        Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+}
+
 function Initialize-IntuneWinAppUtil {
     <#
     .SYNOPSIS
