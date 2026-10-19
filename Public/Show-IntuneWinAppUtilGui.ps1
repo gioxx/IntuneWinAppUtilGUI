@@ -77,6 +77,7 @@ function Show-IntuneWinAppUtilGUI {
     # Grab controls
     $SourceFolder    = $window.FindName("SourceFolder")
     $SetupFile       = $window.FindName("SetupFile")
+    $SetupFileHint   = $window.FindName("SetupFileHint")
     $OutputFolder    = $window.FindName("OutputFolder")
     $SourceFolderPathLength = $window.FindName("SourceFolderPathLength")
     $OutputFolderPathLength = $window.FindName("OutputFolderPathLength")
@@ -99,16 +100,155 @@ function Show-IntuneWinAppUtilGUI {
     $ExitButton      = $window.FindName("ExitButton")
 
     $PathLengthLimit = 260
+    $DefaultSetupFileHint = "Valid MSI or EXE. PSADT packages are detected automatically; MSI metadata is used when script metadata is missing."
 
     Update-PathLengthIndicator -PathText $SourceFolder.Text -Indicator $SourceFolderPathLength -Limit $PathLengthLimit
     Update-PathLengthIndicator -PathText $OutputFolder.Text -Indicator $OutputFolderPathLength -Limit $PathLengthLimit
 
+    # Updates the hint below the Setup File field: warns when the selected file isn't EXE/MSI,
+    # since the Intune install command then needs to be adjusted to match it (e.g. a .ps1 script).
+    $UpdateSetupFileHint = {
+        param($Path)
+        if (-not $SetupFileHint) { return }
+        if ([string]::IsNullOrWhiteSpace($Path)) {
+            $SetupFileHint.Text = $DefaultSetupFileHint
+            return
+        }
+        # GetExtension throws on a path with characters .NET rejects (e.g. a stray '"' while
+        # mid-edit); since this handler runs on every keystroke, treat that as "no extension yet"
+        # rather than letting it surface as an unhandled dispatcher error dialog.
+        try {
+            $ext = [System.IO.Path]::GetExtension($Path)
+        } catch {
+            $ext = ''
+        }
+        if ($ext -notin @('.exe', '.msi')) {
+            # Extensionless files (e.g. "install") also need the warning: they aren't EXE/MSI either.
+            $extLabel = if ($ext) { "'$ext'" } else { 'no extension' }
+            $SetupFileHint.Text = "Note: $extLabel is not EXE/MSI. Make sure your install command in Intune matches this setup file."
+        } else {
+            $SetupFileHint.Text = $DefaultSetupFileHint
+        }
+    }
+
+    $SetupFile.Add_TextChanged({
+        param($evtSender, $e)
+        & $UpdateSetupFileHint $SetupFile.Text.Trim()
+    })
+
     # When user types/pastes the source path manually, try to auto-suggest the setup file if found.
+    # The lookup (Get-SetupSuggestion) recurses the source folder, which can be slow on large/network
+    # folders, so it is debounced (runs once typing pauses) AND run on a background job, so a slow scan
+    # never freezes the window; only the resulting control updates are marshaled back to the UI thread.
+    #
+    # $sourceFolderScanState is a shared, mutable reference (not a scalar variable) so that both plain
+    # event handlers and the .GetNewClosure()'d poll-timer handler below observe the same RequestId:
+    # GetNewClosure() rebinds a scriptblock into its own dynamic module, where a plain "$script:" lookup
+    # would resolve against that private module instead of this one, silently breaking invalidation.
+    $sourceFolderScanState = [pscustomobject]@{ RequestId = 0 }
+    # Each entry pairs a background job with the DispatcherTimer polling it, so cancelling can
+    # stop the timer too. Leaving an orphaned timer running after its job is force-removed/disposed
+    # made it poll a dead job object forever, throwing on the dispatcher thread on its next tick.
+    $sourceFolderScanJobs = New-Object System.Collections.Generic.List[object]
+
+    # Kills every scan still in flight and forgets it. Called whenever an edit makes their
+    # in-progress results stale, so a slow/large-folder scan doesn't keep running (and consuming
+    # a background PowerShell process) after it can no longer be applied.
+    $sourceFolderScanCancelAll = {
+        foreach ($activeScan in $sourceFolderScanJobs.ToArray()) {
+            try { $activeScan.Timer.Stop() } catch {}
+            try { Remove-Job $activeScan.Job -Force -ErrorAction SilentlyContinue } catch {}
+        }
+        $sourceFolderScanJobs.Clear()
+    }
+
+    $sourceFolderScanTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $sourceFolderScanTimer.Interval = [TimeSpan]::FromMilliseconds(350)
+    $sourceFolderScanTimer.Add_Tick({
+        $sourceFolderScanTimer.Stop()
+        $src = $SourceFolder.Text.Trim()
+        if (-not $src) { return }
+
+        $sourceFolderScanState.RequestId++
+        $requestId = $sourceFolderScanState.RequestId
+        $currentSetupFile = $SetupFile.Text
+        $currentFinalFilename = $FinalFilename.Text
+
+        $job = Start-Job -ArgumentList $moduleRoot, $src, $currentSetupFile, $currentFinalFilename -ScriptBlock {
+            param($moduleRoot, $src, $currentSetupFile, $currentFinalFilename)
+            $helperPath = Join-Path $moduleRoot 'Private\IWAPG-Hlp-Setup.ps1'
+            if (-not (Test-Path $helperPath)) { return $null }
+            # A fresh job process hasn't loaded PresentationFramework, but the helper file also
+            # defines Set-SetupFromSource, whose param block references [System.Windows.Controls.TextBox];
+            # without this, dot-sourcing fails before Get-SetupSuggestion can be defined.
+            Add-Type -AssemblyName PresentationFramework -ErrorAction SilentlyContinue
+            . $helperPath
+            Get-SetupSuggestion -SourcePath $src -CurrentSetupFile $currentSetupFile -CurrentFinalFilename $currentFinalFilename
+        }
+        $pollTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $scanEntry = [pscustomobject]@{ Job = $job; Timer = $pollTimer }
+        $sourceFolderScanJobs.Add($scanEntry)
+
+        # GetNewClosure() below only reaches variables local to THIS scope (one level up from the
+        # closure) — it does not walk further up into the enclosing function's scope. Without these
+        # aliases, $sourceFolderScanJobs/$sourceFolderScanState/$SetupFile/$FinalFilename would all
+        # resolve to $null inside the poll-timer closure.
+        $scanJobsRef = $sourceFolderScanJobs
+        $scanStateRef = $sourceFolderScanState
+        $setupFileRef = $SetupFile
+        $finalFilenameRef = $FinalFilename
+
+        $pollTimer.Interval = [TimeSpan]::FromMilliseconds(100)
+        $pollTimer.Add_Tick({
+            try {
+                if ($job.State -notin @('Completed', 'Failed', 'Stopped')) { return }
+            } catch {
+                # Job was force-removed/disposed elsewhere (e.g. cancelAll raced this tick); stop polling it.
+                $pollTimer.Stop()
+                return
+            }
+            $pollTimer.Stop()
+            $suggestion = $null
+            try { $suggestion = Receive-Job $job -ErrorAction SilentlyContinue } catch {}
+            try { Remove-Job $job -Force -ErrorAction SilentlyContinue } catch {}
+            $scanJobsRef.Remove($scanEntry) | Out-Null
+
+            # Discard results from a scan superseded by newer typing.
+            if ($suggestion -and $requestId -eq $scanStateRef.RequestId) {
+                if ($suggestion.SetupFile -is [string]) { $setupFileRef.Text = $suggestion.SetupFile }
+                if ($suggestion.FinalFilename -is [string]) { $finalFilenameRef.Text = $suggestion.FinalFilename }
+            }
+        }.GetNewClosure())
+        $pollTimer.Start()
+    })
+
     $SourceFolder.Add_TextChanged({
         param($evtSender, $e)
-        $src = $SourceFolder.Text.Trim()
-        if ($src) { Set-SetupFromSource -SourcePath $src -SetupFileControl $SetupFile -FinalFilenameControl $FinalFilename }
         Update-PathLengthIndicator -PathText $SourceFolder.Text -Indicator $SourceFolderPathLength -Limit $PathLengthLimit
+        # Invalidate (and kill) any scan already in flight: its result was computed against the
+        # old inputs and must not overwrite what the user is typing now.
+        $sourceFolderScanState.RequestId++
+        & $sourceFolderScanCancelAll
+        $sourceFolderScanTimer.Stop()
+        $sourceFolderScanTimer.Start()
+    })
+
+    # Cancel the pending auto-detect scan if the user starts editing Setup File manually,
+    # so it doesn't overwrite their in-progress edit once the timer fires. Also invalidates
+    # (and kills) any scan already running, so its result can't clobber this manual edit either.
+    $SetupFile.Add_TextChanged({
+        param($evtSender, $e)
+        $sourceFolderScanState.RequestId++
+        & $sourceFolderScanCancelAll
+        $sourceFolderScanTimer.Stop()
+    })
+
+    # Editing Final Filename manually must also invalidate (and kill) an in-flight scan, so it
+    # can't overwrite this field once the scan completes.
+    $FinalFilename.Add_TextChanged({
+        param($evtSender, $e)
+        $sourceFolderScanState.RequestId++
+        & $sourceFolderScanCancelAll
     })
 
     $updateCheckEnabled = $true
@@ -221,7 +361,7 @@ function Show-IntuneWinAppUtilGUI {
     $BrowseSetup.Add_Click({
         $dialog = New-Object System.Windows.Forms.OpenFileDialog
         try {
-            $dialog.Filter = "Executable or MSI (*.exe;*.msi)|*.exe;*.msi"
+            $dialog.Filter = "Executable or MSI (*.exe;*.msi)|*.exe;*.msi|Script files (*.ps1;*.bat;*.cmd)|*.ps1;*.bat;*.cmd|All files (*.*)|*.*"
             if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 $selectedPath = $dialog.FileName
                 $sourceRoot   = $SourceFolder.Text.Trim()
@@ -351,19 +491,10 @@ function Show-IntuneWinAppUtilGUI {
         if (-not (Test-Path $c)) { [System.Windows.MessageBox]::Show("Invalid source folder path.", "Error", "OK", "Error"); return }
         
         # Validate setup file
-        if (-not (Test-Path $s)) {
+        if (-not $s) { [System.Windows.MessageBox]::Show("Setup file not found.", "Error", "OK", "Error"); return }
+        if (-not (Test-Path $s -PathType Leaf)) {
             $s = Join-Path $c $s
-            if (-not (Test-Path $s)) { [System.Windows.MessageBox]::Show("Setup file not found.", "Error", "OK", "Error"); return }
-        }
-
-        # Validate extension before running the tool
-        $extSetup = [System.IO.Path]::GetExtension($s).ToLowerInvariant()
-        if ($extSetup -notin @(".exe", ".msi")) {
-            [System.Windows.MessageBox]::Show(
-                "Setup file must be .exe or .msi (got '$extSetup').",
-                "Invalid setup type", "OK", "Error"
-            )
-            return
+            if (-not (Test-Path $s -PathType Leaf)) { [System.Windows.MessageBox]::Show("Setup file not found.", "Error", "OK", "Error"); return }
         }
 
         # Validate output folder
@@ -608,6 +739,14 @@ Esc: ask before closing the window.
         try {
             if ($updateCheckTimer) { $updateCheckTimer.Stop() }
             if ($updateCheckJob) { Remove-Job $updateCheckJob -Force -ErrorAction SilentlyContinue }
+            if ($sourceFolderScanTimer) { $sourceFolderScanTimer.Stop() }
+            if ($sourceFolderScanJobs) {
+                foreach ($pendingScan in $sourceFolderScanJobs.ToArray()) {
+                    try { $pendingScan.Timer.Stop() } catch {}
+                    try { Remove-Job $pendingScan.Job -Force -ErrorAction SilentlyContinue } catch {}
+                }
+                $sourceFolderScanJobs.Clear()
+            }
             if (-not (Test-Path (Split-Path $configPath))) {
                 New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
             }
