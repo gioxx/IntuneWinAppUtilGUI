@@ -3,21 +3,29 @@ function Get-MaxFilePathInfo {
     .SYNOPSIS
     Returns the longest full file path length under a root directory.
     .DESCRIPTION
-    Enumerates files recursively and returns the maximum FullName length and the path.
+    Enumerates files recursively and returns the maximum FullName length and the path, plus the total
+    size of the files (so callers need a single pass over large or slow source folders).
     If no files are found, returns the root path and its length.
     .PARAMETER RootPath
     The root directory to scan.
+    .PARAMETER OnProgress
+    Optional scriptblock invoked every 200 files (e.g. to let the UI repaint during a long scan).
     .OUTPUTS
-    PSCustomObject with Length and Path.
+    PSCustomObject with Length, Path and TotalBytes.
     #>
 
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string] $RootPath)
+    param(
+        [Parameter(Mandatory)][string] $RootPath,
+        [scriptblock] $OnProgress
+    )
 
     try {
         $maxLen = 0
         $maxPath = $null
         $foundAny = $false
+        $totalBytes = [long]0
+        $count = 0
 
         foreach ($item in Get-ChildItem -Path $RootPath -Recurse -Force -File -ErrorAction SilentlyContinue) {
             $len = $item.FullName.Length
@@ -25,7 +33,9 @@ function Get-MaxFilePathInfo {
                 $maxLen = $len
                 $maxPath = $item.FullName
             }
+            $totalBytes += $item.Length
             $foundAny = $true
+            if ($OnProgress -and (++$count % 200) -eq 0) { & $OnProgress }
         }
 
         if (-not $foundAny) {
@@ -34,8 +44,9 @@ function Get-MaxFilePathInfo {
         }
 
         return [PSCustomObject]@{
-            Length = $maxLen
-            Path   = $maxPath
+            Length     = $maxLen
+            Path       = $maxPath
+            TotalBytes = $totalBytes
         }
     } catch {
         return $null
