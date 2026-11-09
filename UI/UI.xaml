@@ -1,6 +1,6 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="IntuneWinAppUtil GUI - 1.1.3"
+        Title="IntuneWinAppUtil GUI - 1.1.4"
         SizeToContent="WidthAndHeight"
         ResizeMode="CanResize"
         MinWidth="700"
@@ -189,7 +189,7 @@
                                     BorderBrush="#3DFFFFFF"
                                     BorderThickness="1"
                                     VerticalAlignment="Center">
-                                <TextBlock Text="1.1.3"
+                                <TextBlock Text="1.1.4"
                                            Foreground="#FFFFFF"
                                            FontSize="11"
                                            FontWeight="SemiBold"
@@ -479,7 +479,9 @@
     </Border>
 
     <!-- Result overlay shown when a package has been created -->
+    <!-- TabNavigation Cycle: Tab moves between the panel buttons and never reaches the form behind it. -->
     <Border Name="ResultOverlay"
+            KeyboardNavigation.TabNavigation="Cycle"
             Margin="14"
             CornerRadius="10"
             Background="#B30F172A"

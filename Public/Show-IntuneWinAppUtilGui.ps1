@@ -911,7 +911,9 @@ Esc: ask before closing the window.
         param($evtSender, $e)
         if ($runState.Busy) { $e.Handled = $true; return }
         if ($ResultOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
-            # Result overlay open: Enter opens the folder, Esc closes it; nothing else reaches the form.
+            # Result overlay open: Enter opens the folder, Esc closes it; Tab moves between the panel
+            # buttons (TabNavigation Cycle in UI.xaml). Nothing else reaches the form.
+            if ($e.Key -eq 'Tab') { return }
             switch ($e.Key) {
                 'Return' { & $openResultFolder }
                 'Escape' { & $hideResult }
