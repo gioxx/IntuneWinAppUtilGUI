@@ -22,6 +22,8 @@ For additional project documentation and practical guidance, see the [IntuneWinA
 - Graphical interface for all required options (`-c`, `-s`, `-o`).
 - It detects the use of PSAppDeployToolkit and automatically proposes the setup file and final IntuneWin package name, including MSI-backed packages.
 - Live path length indicator for Source/Output folders, with a final max-path check at Run time.
+- Remembers the last 10 output folders in a drop-down (cleared with **Clear recent**); a missing output folder is created at Run time.
+- **Copy path** button in the result panel copies the full path of the new `.intunewin` file.
 - Optional update check on startup with a non-blocking UI banner.
 - Sanitizes invalid characters from the output filename.
 - Uses Windows-version-safe UI labels instead of emoji glyphs in the WPF interface.
@@ -123,8 +125,8 @@ To detect the file regardless of its version, leave the call without `-MinimumVe
   %APPDATA%\IntuneWinAppUtilGUI\
   ```
 
-- It stores only the `ToolPath` so it can be reused at next launch.
-- This file is updated when the GUI closes.
+- It stores the `ToolPath` and the last 10 output folders (`RecentOutputFolders`) so they can be reused at next launch.
+- This file is updated when the GUI closes, after each successful package and when **Clear recent** is clicked.
 - Optional: `UpdateCheckEnabled` (boolean) to enable/disable the update check banner.
 
 ---

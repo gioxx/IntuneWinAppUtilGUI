@@ -284,9 +284,16 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBox Name="OutputFolder" Grid.Column="0" Margin="0,0,10,0"/>
+                                <!-- Editable: type a path or pick one of the last 10 output folders. -->
+                                <ComboBox Name="OutputFolder" Grid.Column="0" Margin="0,0,10,0"
+                                          IsEditable="True" IsTextSearchEnabled="False"
+                                          MinHeight="31" FontSize="12.5" VerticalContentAlignment="Center"
+                                          ToolTip="Type a path or pick a recent output folder"/>
                                 <Button Name="BrowseOutput" Content="Browse..." Grid.Column="1" Width="88"/>
+                                <Button Name="ClearRecentOutput" Content="Clear recent" Grid.Column="2" Width="104" Margin="8,0,0,0"
+                                        ToolTip="Remove all recent output folders from the list"/>
                             </Grid>
                             <TextBlock Name="OutputFolderPathLength"
                                        Text="Path length: 0/260"
