@@ -22,6 +22,7 @@
             IconUri      = 'https://raw.githubusercontent.com/gioxx/IntuneWinAppUtilGUI/main/Assets/icon.png'
             ReleaseNotes = @'
 - Added: the package result panel has a Copy path button that copies the full path of the .intunewin file to the clipboard.
+- Added: the Output Folder field remembers the last 10 folders used for a successful package; pick one from the drop-down or remove them all with Clear recent. The list is stored in config.json.
 '@
         }
     }
