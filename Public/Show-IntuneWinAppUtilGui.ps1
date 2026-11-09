@@ -106,6 +106,7 @@ function Show-IntuneWinAppUtilGUI {
     $BrowseSource    = $window.FindName("BrowseSource")
     $BrowseSetup     = $window.FindName("BrowseSetup")
     $BrowseOutput    = $window.FindName("BrowseOutput")
+    $ClearRecentOutput = $window.FindName("ClearRecentOutput")
     $BrowseTool      = $window.FindName("BrowseTool")
     
     $RunButton       = $window.FindName("RunButton")
@@ -355,6 +356,28 @@ function Show-IntuneWinAppUtilGUI {
 
     $updateCheckEnabled = $true
 
+    # Recent output folders live in the OutputFolder drop-down; the field text is kept when the list changes.
+    $setRecentOutputFolders = {
+        param([string[]]$Folders)
+        $currentText = $OutputFolder.Text
+        $OutputFolder.Items.Clear()
+        foreach ($folder in $Folders) { $null = $OutputFolder.Items.Add($folder) }
+        $OutputFolder.Text = $currentText
+        $ClearRecentOutput.IsEnabled = $OutputFolder.Items.Count -gt 0
+    }
+    $saveConfig = {
+        if (-not (Test-Path (Split-Path $configPath))) {
+            New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
+        }
+        $cfg = @{
+            ToolPath = $ToolPathBox.Text.Trim()
+            UpdateCheckEnabled = $updateCheckEnabled
+            RecentOutputFolders = @($OutputFolder.Items | ForEach-Object { [string]$_ })
+        }
+        $cfg | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
+    }
+    & $setRecentOutputFolders @()
+
     # Preload config.json if it exists
     if (Test-Path $configPath) {
         try {
@@ -366,6 +389,8 @@ function Show-IntuneWinAppUtilGUI {
             if ($null -ne $cfg.UpdateCheckEnabled) {
                 $updateCheckEnabled = [bool]$cfg.UpdateCheckEnabled
             }
+            # Missing folders are kept: Run recreates the output folder when it does not exist.
+            & $setRecentOutputFolders (Get-IwaRecentFolderList -Recent @($cfg.RecentOutputFolders | Where-Object { $_ -is [string] }))
         } catch {}
     }
 
@@ -501,9 +526,16 @@ function Show-IntuneWinAppUtilGUI {
         }
     })
 
-    $OutputFolder.Add_TextChanged({
+    # ComboBox has no TextChanged event of its own; its editable text box raises it and it bubbles up.
+    $OutputFolder.AddHandler([System.Windows.Controls.Primitives.TextBoxBase]::TextChangedEvent, [System.Windows.Controls.TextChangedEventHandler]{
         param($evtSender, $e)
         Update-PathLengthIndicator -PathText $OutputFolder.Text -Indicator $OutputFolderPathLength -Limit $PathLengthLimit
+    })
+
+    # Clear recent: empty the drop-down and save right away; the current field value stays.
+    $ClearRecentOutput.Add_Click({
+        & $setRecentOutputFolders @()
+        try { & $saveConfig } catch { Write-IwaDebugLog "Saving config.json failed: $($_.Exception.Message)" }
     })
 
     # Browse for IntuneWinAppUtil.exe
@@ -824,6 +856,8 @@ function Show-IntuneWinAppUtilGUI {
                 & $hideProgress
 
                 $note = if ($finalName -ne $newName) { "'$newName' already existed, so an incremental suffix was added." } else { $null }
+                & $setRecentOutputFolders (Get-IwaRecentFolderList -Recent @($OutputFolder.Items | ForEach-Object { [string]$_ }) -Folder $o)
+                try { & $saveConfig } catch { Write-IwaDebugLog "Saving config.json failed: $($_.Exception.Message)" }
                 & $showResult $fullPath $note
 
             } catch {
@@ -866,7 +900,7 @@ function Show-IntuneWinAppUtilGUI {
     $ClearButton.Add_Click({
         $SourceFolder.Clear()
         $SetupFile.Clear()
-        $OutputFolder.Clear()
+        $OutputFolder.Text = ''
         $FinalFilename.Clear()
     })
 
@@ -946,7 +980,7 @@ Esc: ask before closing the window.
         if ($runState.Busy) { $e.Cancel = $true }
     })
 
-    # When the window is closed, save the ToolPath to config.json
+    # When the window is closed, save ToolPath, UpdateCheckEnabled and the recent output folders to config.json
     $window.Add_Closed({
         try {
             if ($updateCheckTimer) { $updateCheckTimer.Stop() }
@@ -959,14 +993,7 @@ Esc: ask before closing the window.
                 }
                 $sourceFolderScanJobs.Clear()
             }
-            if (-not (Test-Path (Split-Path $configPath))) {
-                New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
-            }
-            $cfg = @{
-                ToolPath = $ToolPathBox.Text.Trim()
-                UpdateCheckEnabled = $updateCheckEnabled
-            }
-            $cfg | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
+            & $saveConfig
         } catch { }
     })
 
