@@ -149,6 +149,7 @@ function Show-IntuneWinAppUtilGUI {
     $ResultNote       = $window.FindName("ResultNote")
     $ResultOpenFolder = $window.FindName("ResultOpenFolder")
     $ResultClose      = $window.FindName("ResultClose")
+    $ResultCopyPath   = $window.FindName("ResultCopyPath")
     $resultState = [pscustomobject]@{ Path = $null }
 
     $showResult = {
@@ -158,6 +159,8 @@ function Show-IntuneWinAppUtilGUI {
         $ResultFolder.Text = Split-Path $PackagePath -Parent
         $ResultNote.Text = $Note
         $ResultNote.Visibility = if ($Note) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        $copyPathFeedbackTimer.Stop()
+        $ResultCopyPath.Content = 'Copy path'
         $ResultOverlay.Visibility = [System.Windows.Visibility]::Visible
         $null = $ResultOpenFolder.Focus()
         # Success sound from the user's Windows sound scheme (error message boxes already play their own).
@@ -171,7 +174,28 @@ function Show-IntuneWinAppUtilGUI {
         if ($resultState.Path) { Start-Process explorer.exe "/select,`"$($resultState.Path)`"" }
         & $hideResult
     }
+    # Copy path: puts the final .intunewin path on the clipboard and briefly confirms it on the button.
+    $copyPathFeedbackTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $copyPathFeedbackTimer.Interval = [TimeSpan]::FromMilliseconds(1500)
+    $copyPathFeedbackTimer.Add_Tick({
+        $copyPathFeedbackTimer.Stop()
+        $ResultCopyPath.Content = 'Copy path'
+    })
+    $copyResultPath = {
+        if (-not $resultState.Path) { return }
+        try {
+            [System.Windows.Clipboard]::SetText($resultState.Path)
+            $ResultCopyPath.Content = 'Copied!'
+        } catch {
+            # The clipboard can be locked by another process for a moment.
+            Write-IwaDebugLog "Copy path failed: $($_.Exception.Message)"
+            $ResultCopyPath.Content = 'Copy failed'
+        }
+        $copyPathFeedbackTimer.Stop()
+        $copyPathFeedbackTimer.Start()
+    }
     $ResultOpenFolder.Add_Click({ & $openResultFolder })
+    $ResultCopyPath.Add_Click({ & $copyResultPath })
     $ResultClose.Add_Click({ & $hideResult })
     $HelpButton      = $window.FindName("HelpButton")
     $ClearButton     = $window.FindName("ClearButton")

@@ -525,6 +525,8 @@
                            Visibility="Collapsed"/>
                 <StackPanel Margin="0,18,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Name="ResultOpenFolder" Content="Open folder" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
+                    <Button Name="ResultCopyPath" Content="Copy path" Width="104" Margin="0,0,8,0"
+                            ToolTip="Copy the full path of the .intunewin file to the clipboard"/>
                     <Button Name="ResultClose" Content="Close" Width="104"/>
                 </StackPanel>
             </StackPanel>
