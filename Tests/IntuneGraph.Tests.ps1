@@ -181,5 +181,16 @@ Describe 'Publish-IwaWin32AppContent' {
         }
         { Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 } | Should -Throw '*commitFileFailed*'
         Should -Invoke Invoke-IwaGraph -Times 0 -ParameterFilter { $Method -eq 'PATCH' }
+        { Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 -AppBody ([ordered]@{ displayName = 'Contoso Tool' }) } | Should -Throw '*commitFileFailed*'
+        Should -Invoke Invoke-IwaGraph -Times 0 -ParameterFilter { $Method -eq 'PATCH' }
+    }
+
+    It 'applies the app settings in the same PATCH as the new content version' {
+        Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 -AppBody ([ordered]@{ displayName = 'Contoso Tool'; installCommandLine = 'setup.exe /S' }) | Out-Null
+        Should -Invoke Invoke-IwaGraph -Times 1 -Exactly -ParameterFilter { $Method -eq 'PATCH' }
+        Should -Invoke Invoke-IwaGraph -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'PATCH' -and $Body.displayName -eq 'Contoso Tool' -and $Body.installCommandLine -eq 'setup.exe /S' -and
+            $Body.committedContentVersion -eq 'cv1' -and $Body['@odata.type'] -eq '#microsoft.graph.win32LobApp'
+        }
     }
 }

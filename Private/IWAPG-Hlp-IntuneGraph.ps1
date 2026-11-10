@@ -165,6 +165,7 @@ function Publish-IwaWin32AppContent {
     Uploads the encrypted package content to a Win32 app and makes it the committed version.
     .DESCRIPTION
     The app keeps its previous content until the final PATCH, which runs only after a successful commit.
+    Settings passed in -AppBody are applied together with the new content in that same PATCH.
     #>
     [CmdletBinding()]
     param(
@@ -172,6 +173,7 @@ function Publish-IwaWin32AppContent {
         [Parameter(Mandatory)]$Package,
         [Parameter(Mandatory)][string]$ContentFile,
         [scriptblock]$OnProgress,
+        [System.Collections.IDictionary]$AppBody,
         [int]$ChunkSizeBytes = 6MB,
         [int]$SasRenewSeconds = 420,
         [int]$PollIntervalSeconds = 2
@@ -225,6 +227,10 @@ function Publish-IwaWin32AppContent {
     Invoke-IwaBlobRequest -Uri "$sasUri&comp=blocklist" -Body $blockList -ContentType 'application/xml'
     Invoke-IwaGraph -Method POST -Uri "$fileUri/commit" -Body @{ fileEncryptionInfo = $Package.EncryptionInfo } | Out-Null
     Wait-IwaContentFileState -Uri $fileUri -State 'commitFile' -PollIntervalSeconds $PollIntervalSeconds | Out-Null
-    Invoke-IwaGraph -Method PATCH -Uri $appUri -Body ([ordered]@{ '@odata.type' = '#microsoft.graph.win32LobApp'; committedContentVersion = $version.id }) | Out-Null
+    $patch = [ordered]@{}
+    if ($AppBody) { foreach ($key in $AppBody.Keys) { $patch[$key] = $AppBody[$key] } }
+    $patch['@odata.type'] = '#microsoft.graph.win32LobApp'
+    $patch['committedContentVersion'] = $version.id
+    Invoke-IwaGraph -Method PATCH -Uri $appUri -Body $patch | Out-Null
     [string]$version.id
 }
