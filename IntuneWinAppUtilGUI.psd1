@@ -1,6 +1,6 @@
 @{
     RootModule           = 'IntuneWinAppUtilGUI.psm1'
-    ModuleVersion        = '1.1.4'
+    ModuleVersion        = '1.2.0'
     GUID                 = '7db79126-1b57-48d2-970a-4795692dfcfc'
     Author               = 'Giovanni Solone'
     Description          = 'GUI wrapper for IntuneWinAppUtil.exe with config file support and WPF interface.'
@@ -21,8 +21,9 @@
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             IconUri      = 'https://raw.githubusercontent.com/gioxx/IntuneWinAppUtilGUI/main/Assets/icon.png'
             ReleaseNotes = @'
-- Added: the package result panel has a Copy path button that copies the full path of the .intunewin file to the clipboard.
-- Added: the Output Folder field remembers the last 10 folders used for a successful package; pick one from the drop-down or remove them all with Clear recent. The list is stored in config.json.
+- Added: Publish to Intune (preview). Create a Win32 app in Intune, or update an existing one, from IntuneWinAppUtilGUI: app information, commands, requirements and detection rules (MSI, file/folder, registry, PowerShell script), then upload the package. Open it from Upload to Intune... after packaging, or from Publish to Intune... next to Run.
+- Added: Publish to Intune signs in with Connect-MgGraph and installs Microsoft.Graph.Authentication for the current user when it is missing.
+- Changed: the Run/Publish to Intune/Clear/Exit buttons are on two rows, and the Package created panel is wider.
 '@
         }
     }
