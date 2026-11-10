@@ -71,3 +71,94 @@ Describe 'Get-IwaIntunePortalUrl' {
         Get-IwaIntunePortalUrl -AppId '00000000-0000-0000-0000-000000000001' | Should -Be 'https://intune.microsoft.com/#view/Microsoft_Intune_Apps/SettingsMenu/~/0/appId/00000000-0000-0000-0000-000000000001'
     }
 }
+
+Describe 'Invoke-IwaBlobRequest' {
+    BeforeEach { Mock Start-Sleep { } }
+    It 'retries a failed block and then succeeds' {
+        $script:attempts = 0
+        Mock Invoke-WebRequest { $script:attempts++; if ($script:attempts -lt 3) { throw 'busy' } }
+        Invoke-IwaBlobRequest -Uri 'https://blob.example/c?sv=1&comp=block' -Body ([byte[]](1, 2))
+        Should -Invoke Invoke-WebRequest -Times 3
+    }
+    It 'gives up after the last attempt' {
+        Mock Invoke-WebRequest { throw 'busy' }
+        { Invoke-IwaBlobRequest -Uri 'https://blob.example/c?sv=1' -Body 'x' } | Should -Throw '*after 3 attempts*'
+    }
+}
+
+Describe 'Wait-IwaContentFileState' {
+    BeforeEach { Mock Start-Sleep { } }
+    It 'polls until the state succeeds' {
+        $script:polls = 0
+        Mock Invoke-IwaGraph { $script:polls++; if ($script:polls -lt 2) { [pscustomobject]@{ uploadState = 'commitFilePending' } } else { [pscustomobject]@{ uploadState = 'commitFileSuccess' } } }
+        (Wait-IwaContentFileState -Uri 'https://graph.example/f' -State 'commitFile').uploadState | Should -Be 'commitFileSuccess'
+        $script:polls | Should -Be 2
+    }
+    It 'throws when Intune reports a failure' {
+        Mock Invoke-IwaGraph { [pscustomobject]@{ uploadState = 'commitFileFailed' } }
+        { Wait-IwaContentFileState -Uri 'https://graph.example/f' -State 'commitFile' } | Should -Throw '*commitFileFailed*'
+    }
+    It 'throws after the last attempt' {
+        Mock Invoke-IwaGraph { [pscustomobject]@{ uploadState = 'commitFilePending' } }
+        { Wait-IwaContentFileState -Uri 'https://graph.example/f' -State 'commitFile' -MaxAttempts 2 } | Should -Throw '*Timed out*'
+    }
+}
+
+Describe 'Publish-IwaWin32AppContent' {
+    BeforeEach {
+        $script:calls = New-Object System.Collections.Generic.List[string]
+        $script:blockList = $null
+        Mock Start-Sleep { }
+        Mock Invoke-IwaGraph {
+            $script:calls.Add("$Method $Uri")
+            if ($Uri -like '*/contentVersions') { return [pscustomobject]@{ id = 'cv1' } }
+            if ($Uri -like '*/files') { return [pscustomobject]@{ id = 'f1' } }
+            [pscustomobject]@{ }
+        }
+        Mock Wait-IwaContentFileState {
+            $script:calls.Add("WAIT $State")
+            [pscustomobject]@{ uploadState = "${State}Success"; azureStorageUri = 'https://blob.example/c?sv=1&sig=x' }
+        }
+        Mock Invoke-IwaBlobRequest {
+            $script:calls.Add("BLOB $Uri")
+            if ($Uri -like '*comp=blocklist') { $script:blockList = $Body }
+        }
+        $content = Join-Path $TestDrive 'IntunePackage.intunewin'
+        [System.IO.File]::WriteAllBytes($content, [byte[]](1..13))
+        $package = [pscustomobject]@{ UnencryptedSize = 99; EncryptionInfo = [ordered]@{ encryptionKey = 'a2V5' } }
+    }
+
+    It 'uploads in blocks, commits, then sets the committed content version' {
+        Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 | Should -Be 'cv1'
+        @($script:calls | Where-Object { $_ -like 'BLOB*comp=block&*' }).Count | Should -Be 3
+        ([regex]::Matches($script:blockList, '<Latest>')).Count | Should -Be 3
+        $commit = $script:calls.IndexOf((@($script:calls | Where-Object { $_ -like 'POST*/files/f1/commit' }))[0])
+        $patch = $script:calls.IndexOf((@($script:calls | Where-Object { $_ -like 'PATCH*/mobileApps/app1' }))[0])
+        $commit | Should -BeGreaterOrEqual 0
+        $commit | Should -BeLessThan $patch
+        Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'POST' -and $Uri -like '*/files' -and $Body.size -eq 99 -and $Body.sizeEncrypted -eq 13 }
+        Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'POST' -and $Uri -like '*/commit' -and $Body.fileEncryptionInfo.encryptionKey -eq 'a2V5' }
+        Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'PATCH' -and $Body.committedContentVersion -eq 'cv1' }
+    }
+
+    It 'reports progress after each block' {
+        $script:progress = New-Object System.Collections.Generic.List[long]
+        Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 -OnProgress { param($sent, $total) $script:progress.Add($sent) } | Out-Null
+        @($script:progress) | Should -Be @(5, 10, 13)
+    }
+
+    It 'renews the SAS URI when it gets old' {
+        Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 -SasRenewSeconds 0 | Out-Null
+        Should -Invoke Invoke-IwaGraph -Times 3 -ParameterFilter { $Uri -like '*/renewUpload' }
+        Should -Invoke Wait-IwaContentFileState -Times 3 -ParameterFilter { $State -eq 'azureStorageUriRenewal' }
+    }
+
+    It 'keeps the previous content version when the commit fails' {
+        Mock Wait-IwaContentFileState {
+            if ($State -eq 'commitFile') { throw "Intune reported 'commitFileFailed' for the package upload." }
+            [pscustomobject]@{ azureStorageUri = 'https://blob.example/c?sv=1&sig=x' }
+        }
+        { Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 } | Should -Throw '*commitFileFailed*'
+        Should -Invoke Invoke-IwaGraph -Times 0 -ParameterFilter { $Method -eq 'PATCH' }
+    }
+}
