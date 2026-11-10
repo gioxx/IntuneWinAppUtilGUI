@@ -48,10 +48,15 @@ $script:IwaIntuneTaskScript = {
         }
         Import-Module Microsoft.Graph.Authentication
 
+        # Update + new package: the settings go in the same PATCH that commits the new content,
+        # so a failed upload leaves both settings and content as they were.
+        $appBody = $null
         if (-not $State.AppId) {
             $State.Step = 'Creating the app in Intune'
             $State.AppId = (Invoke-IwaGraph -Method POST -Uri $script:IwaGraphAppsUri -Body $Body).id
             $State.Saved = $true
+        } elseif ($Body -and $Package) {
+            $appBody = $Body
         } elseif ($Body) {
             $State.Step = 'Saving the app settings'
             Invoke-IwaGraph -Method PATCH -Uri "$script:IwaGraphAppsUri/$($State.AppId)" -Body $Body | Out-Null
@@ -63,7 +68,9 @@ $script:IwaIntuneTaskScript = {
             $work = Join-Path ([System.IO.Path]::GetTempPath()) ('IwaUpload-' + [guid]::NewGuid())
             $content = Expand-IwaIntuneWinContent -Package $Package -Destination $work
             $State.Step = 'Uploading the content'
-            Publish-IwaWin32AppContent -AppId $State.AppId -Package $Package -ContentFile $content -OnProgress {
+            $publishArgs = @{}
+            if ($appBody) { $publishArgs.AppBody = $appBody }
+            Publish-IwaWin32AppContent -AppId $State.AppId -Package $Package -ContentFile $content @publishArgs -OnProgress {
                 param($sent, $total)
                 $State.Percent = [int](100 * $sent / [Math]::Max(1, $total))
                 $State.Step = 'Uploading the content ({0:N0} of {1:N0} MB)' -f ($sent / 1MB), ($total / 1MB)
@@ -237,7 +244,7 @@ function Show-IwaIntuneWindow {
         $ui.PackagePath.Text = $Path
         if ($Path) {
             try { $state.Package = Read-IwaIntuneWinPackage -Path $Path }
-            catch { & $showStatus 'error' $_.Exception.Message }
+            catch { $ui.RetryUploadButton.Visibility = $collapsed; & $showStatus 'error' $_.Exception.Message }
         }
         if ($state.Package -and $ui.ModeNew.IsChecked) {
             & $setForm (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion)
@@ -328,14 +335,12 @@ function Show-IwaIntuneWindow {
         }
         if ($task.State.Error) {
             Write-IwaDebugLog "Publish to Intune failed: $($task.State.Error)"
-            $message = "Upload failed: $($task.State.Error)"
-            if ($task.State.Saved -and $state.LastUpload) {
-                $message += if ($task.IsNew) {
-                    "`nThe app was created in Intune without content. Select Retry upload to send the package to the same app."
-                } else {
-                    "`nThe app settings were saved and the previous content is still in use. Select Retry upload to send the package again."
-                }
+            $message = "Publishing failed: $($task.State.Error)"
+            if ($task.IsNew -and $task.State.Saved -and $state.LastUpload) {
+                $message += "`nThe app was created in Intune without content. Select Retry upload to send the package to the same app."
                 $ui.RetryUploadButton.Visibility = $visible
+            } else {
+                $message += "`nNothing was changed in Intune: settings and content are as before. Select Upload to try again."
             }
             & $showStatus 'error' $message
         } else {
@@ -402,6 +407,8 @@ function Show-IwaIntuneWindow {
 
     $runSearch = {
         & $hideStatus
+        $state.AppId = $null
+        $ui.OpenInIntune.IsEnabled = $false
         $state.SearchError = $null
         & $withWait {
             try { $state.SearchResults = @(Get-IwaWin32App -Search $ui.SearchBox.Text.Trim()) }
@@ -415,6 +422,7 @@ function Show-IwaIntuneWindow {
         $state.LoadingResults = $false
         if ($state.SearchError) { & $showStatus 'error' "Search failed: $($state.SearchError)" }
         elseif (-not $state.SearchResults.Count) { & $showStatus 'error' 'No Win32 app matches that name.' }
+        & $validate
     }
     $ui.SearchButton.Add_Click({ & $runSearch })
     $ui.SearchBox.Add_KeyDown({
@@ -425,13 +433,15 @@ function Show-IwaIntuneWindow {
         $index = $ui.SearchResults.SelectedIndex
         if ($state.LoadingResults -or $index -lt 0) { return }
         $picked = $state.SearchResults[$index]
+        $state.AppId = $null
+        $ui.OpenInIntune.IsEnabled = $false
         $state.LoadError = $null
         $state.LoadedApp = $null
         & $withWait {
             try { $state.LoadedApp = Get-IwaWin32App -Id $picked.id }
             catch { $state.LoadError = Get-IwaGraphErrorMessage -ErrorRecord $_ }
         }
-        if ($state.LoadError) { & $showStatus 'error' "Loading the app failed: $($state.LoadError)"; return }
+        if ($state.LoadError) { & $showStatus 'error' "Loading the app failed: $($state.LoadError)"; & $validate; return }
         $state.AppId = [string]$state.LoadedApp.id
         $ui.OpenInIntune.IsEnabled = $true
         $ui.RetryUploadButton.Visibility = $collapsed
@@ -505,7 +515,10 @@ function Show-IwaIntuneWindow {
         $body = New-IwaWin32AppBody -Spec (& $getForm) -Package $package -ForUpdate:(-not $ui.ModeNew.IsChecked)
         & $startTask $state.AppId $body $package
     })
-    $ui.RetryUploadButton.Add_Click({ & $startTask $state.AppId $null $state.Package })
+    $ui.RetryUploadButton.Add_Click({
+        if (-not $state.Package) { & $showStatus 'error' 'Select a valid .intunewin package first.'; return }
+        & $startTask $state.AppId $null $state.Package
+    })
     $ui.OpenInIntune.Add_Click({ if ($state.AppId) { Start-Process (Get-IwaIntunePortalUrl -AppId $state.AppId) } })
     $ui.CloseButton.Add_Click({ $win.Close() })
     $win.Add_KeyDown({
