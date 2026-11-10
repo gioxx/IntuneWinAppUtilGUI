@@ -203,6 +203,7 @@ function Show-IntuneWinAppUtilGUI {
     $IntuneButton       = $window.FindName("IntuneButton")
     $openIntuneWindow = {
         param([string]$PackagePath)
+        if ($runState.Busy) { return }
         $version = $null
         if ($PackagePath -and $SetupFile.Text) {
             $setupPath = if ([System.IO.Path]::IsPathRooted($SetupFile.Text)) { $SetupFile.Text } else { Join-Path $SourceFolder.Text $SetupFile.Text }
