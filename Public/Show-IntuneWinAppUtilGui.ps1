@@ -204,15 +204,24 @@ function Show-IntuneWinAppUtilGUI {
     $openIntuneWindow = {
         param([string]$PackagePath)
         if ($runState.Busy) { return }
+        # Same name/version the main window uses for the file name (PSADT, then MSI), not the PSADT launcher's own version.
+        $appInfo = $null
         $version = $null
-        if ($PackagePath -and $SetupFile.Text) {
+        if ($PackagePath -and $SourceFolder.Text) {
+            try { $appInfo = Get-SetupAppInfo -SourcePath $SourceFolder.Text } catch { Write-IwaDebugLog "Reading the app info failed: $($_.Exception.Message)" }
+        }
+        if ($appInfo -and $appInfo.Version) {
+            $version = $appInfo.Version
+        } elseif ($PackagePath -and $SetupFile.Text) {
             $setupPath = if ([System.IO.Path]::IsPathRooted($SetupFile.Text)) { $SetupFile.Text } else { Join-Path $SourceFolder.Text $SetupFile.Text }
             if (Test-Path -LiteralPath $setupPath -PathType Leaf) {
                 try { $version = Get-IntuneFileVersion -Path $setupPath } catch { Write-IwaDebugLog "Reading the setup version failed: $($_.Exception.Message)" }
             }
         }
+        $appName = if ($appInfo) { [string]$appInfo.Name } else { '' }
+        $appPublisher = if ($appInfo) { [string]$appInfo.Publisher } else { '' }
         try {
-            Show-IwaIntuneWindow -Owner $window -ModuleRoot $moduleRoot -PackagePath $PackagePath -DisplayVersion $version
+            Show-IwaIntuneWindow -Owner $window -ModuleRoot $moduleRoot -PackagePath $PackagePath -DisplayVersion $version -DisplayName $appName -Publisher $appPublisher
         } catch {
             Write-IwaDebugLog "Publish to Intune window failed: $($_.Exception.Message)"
             [System.Windows.MessageBox]::Show($window, "Unable to open the Publish to Intune window:`n$($_.Exception.Message)", "Publish to Intune",

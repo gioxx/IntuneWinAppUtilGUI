@@ -17,7 +17,8 @@ function Get-IwaIntuneWindowControlName {
         'ScriptRulePanel', 'RuleScriptPath', 'BrowseScript', 'RuleScriptRunAs32', 'RuleScriptSignature',
         'AddRuleButton', 'RuleErrorText',
         'ValidationText', 'StatusText', 'ProgressPanel', 'ProgressText', 'UploadProgress',
-        'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'CloseButton'
+        'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'CloseButton',
+        'DoneOverlay', 'DoneTitle', 'DoneAppName', 'DoneDetail', 'DoneNote', 'DoneOpenIntune', 'DoneBack', 'DoneCloseWindow'
     )
 }
 
@@ -74,7 +75,8 @@ $script:IwaIntuneTaskScript = {
             Publish-IwaWin32AppContent -AppId $State.AppId -Package $Package -ContentFile $content @publishArgs -OnProgress {
                 param($sent, $total)
                 $State.Percent = [int](100 * $sent / [Math]::Max(1, $total))
-                $State.Step = 'Uploading the content ({0:N0} of {1:N0} MB)' -f ($sent / 1MB), ($total / 1MB)
+                $State.Step = if ($sent -ge $total) { 'Waiting for Intune to process the content (this can take a few minutes)' }
+                              else { 'Uploading the content ({0:N1} of {1:N1} MB)' -f ($sent / 1MB), ($total / 1MB) }
             } | Out-Null
         }
         $State.Done = $true
@@ -95,7 +97,9 @@ function Show-IwaIntuneWindow {
         $Owner,
         [Parameter(Mandatory)][string]$ModuleRoot,
         [string]$PackagePath,
-        [string]$DisplayVersion
+        [string]$DisplayVersion,
+        [string]$DisplayName,
+        [string]$Publisher
     )
 
     $win = [Windows.Markup.XamlReader]::Parse((Get-IwaIntuneWindowXaml -ModuleRoot $ModuleRoot))
@@ -106,7 +110,7 @@ function Show-IwaIntuneWindow {
     # Handlers run in this scope while ShowDialog() is open, but an assignment inside a handler
     # creates a local variable: every value a handler changes lives in $state.
     $state = @{
-        Package = $null; DisplayVersion = $DisplayVersion; AppId = $null; Account = $null
+        Package = $null; DisplayVersion = $DisplayVersion; DisplayName = $DisplayName; Publisher = $Publisher; AppId = $null; Account = $null
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
         ArchitectureProperty = ''; Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
@@ -121,7 +125,7 @@ function Show-IwaIntuneWindow {
     $ui.LimitsText.Text = $script:IwaV1Limitations
     foreach ($release in $script:IwaWindowsReleases) {
         $item = New-Object System.Windows.Controls.ComboBoxItem
-        $item.Content = $release
+        $item.Content = Get-IwaWindowsReleaseLabel -Release $release
         $item.Tag = $release
         [void]$ui.MinimumWindowsRelease.Items.Add($item)
     }
@@ -151,7 +155,7 @@ function Show-IwaIntuneWindow {
         if ($Combo -eq $ui.MinimumWindowsRelease -and $Tag) {
             # Keep a release set in the portal even if it is not in the list.
             $item = New-Object System.Windows.Controls.ComboBoxItem
-            $item.Content = $Tag
+            $item.Content = Get-IwaWindowsReleaseLabel -Release $Tag
             $item.Tag = $Tag
             [void]$Combo.Items.Add($item)
             $Combo.SelectedItem = $item
@@ -258,7 +262,7 @@ function Show-IwaIntuneWindow {
             catch { & $showStatus 'error' $_.Exception.Message }
         }
         if ($state.Package -and $ui.ModeNew.IsChecked) {
-            & $setForm (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion)
+            & $setForm (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion -DisplayName $state.DisplayName -Publisher $state.Publisher)
         } else {
             & $validate
         }
@@ -294,7 +298,7 @@ function Show-IwaIntuneWindow {
             $ui.SearchResults.Items.Clear()
             $state.LoadingResults = $false
             if ($isNew) {
-                if ($state.Package) { & $setForm (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion) }
+                if ($state.Package) { & $setForm (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion -DisplayName $state.DisplayName -Publisher $state.Publisher) }
                 else { & $setForm (& $emptySpec) }
             }
         }
@@ -332,7 +336,10 @@ function Show-IwaIntuneWindow {
         $task = $state.Task
         if (-not $task) { $timer.Stop(); return }
         $ui.ProgressText.Text = [string]$task.State.Step
-        $ui.UploadProgress.Value = [int]$task.State.Percent
+        # Before the first chunk and after the last one Intune is working with no measurable progress.
+        $percent = [int]$task.State.Percent
+        $ui.UploadProgress.IsIndeterminate = ($percent -le 0 -or $percent -ge 100)
+        $ui.UploadProgress.Value = $percent
         if (-not $task.Handle.IsCompleted) { return }
 
         $timer.Stop()
@@ -363,6 +370,13 @@ function Show-IwaIntuneWindow {
                 $state.KeepAppId = $false
             }
             & $showStatus 'success' ("Done: ""{0}"" is in Intune.`n{1}" -f $ui.DisplayName.Text, $script:IwaV1Limitations)
+            $ui.DoneTitle.Text = if ($task.IsNew) { 'App created in Intune' } else { 'App updated in Intune' }
+            $ui.DoneAppName.Text = $ui.DisplayName.Text
+            $ui.DoneDetail.Text = if ($state.LastUpload) { 'Settings and package content are saved. Intune can take a few minutes to show the new content.' }
+                                  else { 'Settings are saved. The package content was not changed.' }
+            $ui.DoneNote.Text = $script:IwaV1Limitations
+            $ui.DoneOverlay.Visibility = $visible
+            $ui.DoneOpenIntune.Focus() | Out-Null
         }
         & $validate
     })
@@ -408,8 +422,8 @@ function Show-IwaIntuneWindow {
         $dialog.Filter = 'Intune Win32 package (*.intunewin)|*.intunewin'
         if ($ui.PackagePath.Text) { $dialog.InitialDirectory = Split-Path $ui.PackagePath.Text -Parent }
         if ($dialog.ShowDialog($win)) {
-            # The version from the main window belongs to the package it built, not to this one.
-            $state.DisplayVersion = $null
+            # Name, version and publisher from the main window belong to the package it built, not to this one.
+            $state.DisplayVersion = $null; $state.DisplayName = $null; $state.Publisher = $null
             & $hideStatus
             if ($ui.ModeUpdate.IsChecked) { $ui.UploadContent.IsChecked = $true }
             & $loadPackage $dialog.FileName
@@ -467,6 +481,13 @@ function Show-IwaIntuneWindow {
         $ui.RegistryRulePanel.Visibility = if ($type -eq 'Registry') { $visible } else { $collapsed }
         $ui.ScriptRulePanel.Visibility = if ($type -eq 'Script') { $visible } else { $collapsed }
         $ui.RuleErrorText.Visibility = $collapsed
+    })
+    # "Exists" compares nothing, so the value box only shows for the other operations.
+    $ui.RuleFileOperation.Add_SelectionChanged({
+        $ui.RuleFileValue.Visibility = if ([string]$ui.RuleFileOperation.SelectedItem.Tag -eq 'exists') { [System.Windows.Visibility]::Hidden } else { $visible }
+    })
+    $ui.RuleRegOperation.Add_SelectionChanged({
+        $ui.RuleRegValue.Visibility = if ([string]$ui.RuleRegOperation.SelectedItem.Tag -eq 'exists') { [System.Windows.Visibility]::Hidden } else { $visible }
     })
     $ui.BrowseScript.Add_Click({
         $dialog = New-Object Microsoft.Win32.OpenFileDialog
@@ -534,6 +555,10 @@ function Show-IwaIntuneWindow {
     })
     $ui.OpenInIntune.Add_Click({ if ($state.AppId) { Start-Process (Get-IwaIntunePortalUrl -AppId $state.AppId) } })
     $ui.CloseButton.Add_Click({ $win.Close() })
+    # The result panel stays open after "Open in Intune", so the user can still close or go back.
+    $ui.DoneOpenIntune.Add_Click({ if ($state.AppId) { Start-Process (Get-IwaIntunePortalUrl -AppId $state.AppId) } })
+    $ui.DoneBack.Add_Click({ $ui.DoneOverlay.Visibility = $collapsed })
+    $ui.DoneCloseWindow.Add_Click({ $win.Close() })
     $win.Add_KeyDown({
         param($evtSender, $e)
         if ($e.Key -eq 'Escape') { $win.Close() }

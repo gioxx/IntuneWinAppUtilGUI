@@ -2,7 +2,21 @@
 # Win32 app model for the Publish to Intune window: form defaults, detection rules, Graph body, validation.
 
 # Values accepted by win32LobApp.minimumSupportedWindowsRelease; the first is the default.
-$script:IwaWindowsReleases = @('1607', '1703', '1709', '1803', '1809', '1903', '1909', '2004', '2H20', '21H1')
+# Older Windows 10 releases are plain ('1607'); newer ones carry the OS ('Windows11_23H2', as in the Graph docs).
+$script:IwaWindowsReleases = @(
+    '1607', '1703', '1709', '1803', '1809', '1903', '1909', '2004', '2H20', '21H1',
+    'Windows10_21H2', 'Windows10_22H2', 'Windows11_21H2', 'Windows11_22H2', 'Windows11_23H2', 'Windows11_24H2'
+)
+
+function Get-IwaWindowsReleaseLabel {
+    <#
+    .SYNOPSIS
+    Turns a minimumSupportedWindowsRelease value into the text shown in the list ('Windows 11 23H2').
+    #>
+    param([string]$Release)
+    if ($Release -match '^Windows(\d+)_(.+)$') { return "Windows $($Matches[1]) $($Matches[2])" }
+    "Windows 10 $Release"
+}
 
 function Get-IwaWin32AppDefault {
     <#
@@ -12,7 +26,10 @@ function Get-IwaWin32AppDefault {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]$Package,
-        [string]$DisplayVersion
+        [string]$DisplayVersion,
+        # From the source folder (PSADT, then MSI); win over the package's own values when set.
+        [string]$DisplayName,
+        [string]$Publisher
     )
 
     $setup = [string]$Package.SetupFile
@@ -40,6 +57,8 @@ function Get-IwaWin32AppDefault {
         $spec.UninstallCommandLine = "msiexec /x $($msi.ProductCode) /qn"
         $spec.Rules = @(@{ Type = 'MsiProductCode'; ProductCode = [string]$msi.ProductCode })
     }
+    if ($DisplayName) { $spec.DisplayName = $DisplayName; $spec.Description = $DisplayName }
+    if ($Publisher) { $spec.Publisher = $Publisher }
     $spec
 }
 

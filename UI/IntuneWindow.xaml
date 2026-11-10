@@ -10,6 +10,7 @@
         TextOptions.TextRenderingMode="ClearType">
     <!-- SHARED_RESOURCES -->
 
+    <Grid>
     <DockPanel Margin="14" LastChildFill="True">
 
         <!-- Header: mode, account, v1 limitations -->
@@ -122,14 +123,14 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <Label Content="Install behavior"/>
-                            <ComboBox Name="RunAsAccount" Margin="0,4,0,0" MinHeight="31">
+                            <ComboBox Name="RunAsAccount" Margin="0,4,0,0" MinHeight="31" VerticalContentAlignment="Center">
                                 <ComboBoxItem Content="System" Tag="system" IsSelected="True"/>
                                 <ComboBoxItem Content="User" Tag="user"/>
                             </ComboBox>
                         </StackPanel>
                         <StackPanel Grid.Column="2">
                             <Label Content="Device restart behavior"/>
-                            <ComboBox Name="DeviceRestartBehavior" Margin="0,4,0,0" MinHeight="31">
+                            <ComboBox Name="DeviceRestartBehavior" Margin="0,4,0,0" MinHeight="31" VerticalContentAlignment="Center">
                                 <ComboBoxItem Content="Determine behavior based on return codes" Tag="basedOnReturnCode" IsSelected="True"/>
                                 <ComboBoxItem Content="No specific action" Tag="suppress"/>
                                 <ComboBoxItem Content="App install may force a device restart" Tag="allow"/>
@@ -150,7 +151,7 @@
                         <CheckBox Name="ArchArm64" Content="arm64"/>
                     </StackPanel>
                     <Label Content="Minimum Windows release"/>
-                    <ComboBox Name="MinimumWindowsRelease" Width="150" HorizontalAlignment="Left" Margin="0,4,0,16" MinHeight="31"/>
+                    <ComboBox Name="MinimumWindowsRelease" Width="180" HorizontalAlignment="Left" Margin="0,4,0,16" MinHeight="31" VerticalContentAlignment="Center"/>
 
                     <TextBlock Text="Detection rules" Style="{StaticResource SectionTitleStyle}"/>
                     <Grid>
@@ -165,7 +166,7 @@
                             Background="{StaticResource SoftPanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
                         <StackPanel>
                             <Label Content="New rule"/>
-                            <ComboBox Name="NewRuleType" Width="220" HorizontalAlignment="Left" Margin="0,4,0,8" MinHeight="31">
+                            <ComboBox Name="NewRuleType" Width="220" HorizontalAlignment="Left" Margin="0,4,0,8" MinHeight="31" VerticalContentAlignment="Center">
                                 <ComboBoxItem Content="MSI product code" Tag="MsiProductCode" IsSelected="True"/>
                                 <ComboBoxItem Content="File or folder" Tag="File"/>
                                 <ComboBoxItem Content="Registry" Tag="Registry"/>
@@ -188,11 +189,11 @@
                                         <ColumnDefinition Width="12"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <ComboBox Name="RuleFileOperation" MinHeight="31">
+                                    <ComboBox Name="RuleFileOperation" MinHeight="31" VerticalContentAlignment="Center">
                                         <ComboBoxItem Content="Exists" Tag="exists" IsSelected="True"/>
                                         <ComboBoxItem Content="Version is at least" Tag="version"/>
                                     </ComboBox>
-                                    <TextBox Name="RuleFileValue" Grid.Column="2" ToolTip="Version to compare, for example 1.2.3.4"/>
+                                    <TextBox Name="RuleFileValue" Grid.Column="2" Visibility="Hidden" ToolTip="Version to compare, for example 1.2.3.4"/>
                                 </Grid>
                                 <CheckBox Name="RuleFile32Bit" Content="Associated with a 32-bit app on 64-bit clients" Margin="0,8,0,0"/>
                             </StackPanel>
@@ -208,12 +209,12 @@
                                         <ColumnDefinition Width="12"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <ComboBox Name="RuleRegOperation" MinHeight="31">
+                                    <ComboBox Name="RuleRegOperation" MinHeight="31" VerticalContentAlignment="Center">
                                         <ComboBoxItem Content="Exists" Tag="exists" IsSelected="True"/>
                                         <ComboBoxItem Content="String equals" Tag="string"/>
                                         <ComboBoxItem Content="Version is at least" Tag="version"/>
                                     </ComboBox>
-                                    <TextBox Name="RuleRegValue" Grid.Column="2" ToolTip="Value to compare"/>
+                                    <TextBox Name="RuleRegValue" Grid.Column="2" Visibility="Hidden" ToolTip="Value to compare"/>
                                 </Grid>
                                 <CheckBox Name="RuleReg32Bit" Content="Associated with a 32-bit app on 64-bit clients" Margin="0,8,0,0"/>
                             </StackPanel>
@@ -240,4 +241,59 @@
             </ScrollViewer>
         </Border>
     </DockPanel>
+
+    <!-- Shown when a publish succeeds, like the "Package created" panel of the main window -->
+    <Border Name="DoneOverlay"
+            KeyboardNavigation.TabNavigation="Cycle"
+            Background="#B30F172A"
+            Visibility="Collapsed">
+        <Border Width="560"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="22,20"
+                CornerRadius="10"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.30" Color="#0F172A"/>
+            </Border.Effect>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="#16A34A" VerticalAlignment="Center">
+                        <TextBlock Text="&#x2713;" Foreground="#FFFFFF" FontSize="15" FontWeight="Bold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Name="DoneTitle" Text="Published to Intune"
+                               Margin="10,0,0,0"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource InkBrush}"/>
+                </StackPanel>
+                <TextBlock Name="DoneAppName"
+                           Margin="0,14,0,0"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource InkBrush}"/>
+                <TextBlock Name="DoneDetail"
+                           Margin="0,4,0,0"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}"/>
+                <TextBlock Name="DoneNote"
+                           Margin="0,10,0,0"
+                           TextWrapping="Wrap"
+                           FontSize="11"
+                           Foreground="{StaticResource MutedBrush}"/>
+                <StackPanel Margin="0,18,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Name="DoneOpenIntune" Content="Open in Intune" Style="{StaticResource PrimaryButtonStyle}" Width="140" Margin="0,0,8,0"
+                            ToolTip="Open this app in the Intune admin center to check it"/>
+                    <Button Name="DoneBack" Content="Back to the form" Width="140" Margin="0,0,8,0"
+                            ToolTip="Keep this window open to change the app again"/>
+                    <Button Name="DoneCloseWindow" Content="Close window" Width="120"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Border>
+    </Grid>
 </Window>
