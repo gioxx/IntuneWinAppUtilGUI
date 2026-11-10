@@ -196,7 +196,6 @@ function New-IwaWin32AppBody {
         displayVersion                 = $Spec.DisplayVersion
         installCommandLine             = $Spec.InstallCommandLine
         uninstallCommandLine           = $Spec.UninstallCommandLine
-        applicableArchitectures        = (@($Spec.Architectures) -join ',')
         minimumSupportedWindowsRelease = $Spec.MinimumWindowsRelease
         installExperience              = [ordered]@{
             '@odata.type'         = '#microsoft.graph.win32LobAppInstallExperience'
@@ -205,6 +204,14 @@ function New-IwaWin32AppBody {
             maxRunTimeInMinutes   = [int]$Spec.MaxRunTimeInMinutes
         }
         rules                          = @(@($Spec.Rules) | Where-Object { $_ } | ForEach-Object { ConvertTo-IwaGraphRule -Rule $_ })
+    }
+    $archList = @($Spec.Architectures) -join ','
+    if ($Spec.ArchitectureProperty -eq 'allowedArchitectures') {
+        # Apps created in the portal use allowedArchitectures and set applicableArchitectures to 'none'.
+        $body.allowedArchitectures = $archList
+        $body.applicableArchitectures = 'none'
+    } else {
+        $body.applicableArchitectures = $archList
     }
     if (-not $ForUpdate) {
         # The same default return codes the Intune portal adds to a new Win32 app.
@@ -249,7 +256,8 @@ function ConvertFrom-IwaGraphApp {
 
     $experience = $App.installExperience
     $arch = [string]$App.applicableArchitectures
-    if (-not $arch -or $arch -eq 'none') { $arch = [string]$App.allowedArchitectures }
+    $archProperty = 'applicableArchitectures'
+    if (-not $arch -or $arch -eq 'none') { $arch = [string]$App.allowedArchitectures; $archProperty = 'allowedArchitectures' }
     [ordered]@{
         DisplayName           = [string]$App.displayName
         Publisher             = [string]$App.publisher
@@ -260,6 +268,7 @@ function ConvertFrom-IwaGraphApp {
         RunAsAccount          = $(if ($experience -and $experience.runAsAccount) { [string]$experience.runAsAccount } else { 'system' })
         DeviceRestartBehavior = $(if ($experience -and $experience.deviceRestartBehavior) { [string]$experience.deviceRestartBehavior } else { 'basedOnReturnCode' })
         MaxRunTimeInMinutes   = $(if ($experience -and $experience.maxRunTimeInMinutes) { [int]$experience.maxRunTimeInMinutes } else { 60 })
+        ArchitectureProperty  = $archProperty
         Architectures         = @($arch -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne 'none' })
         MinimumWindowsRelease = $(if ($App.minimumSupportedWindowsRelease) { [string]$App.minimumSupportedWindowsRelease } else { $script:IwaWindowsReleases[0] })
         Rules                 = @(@($App.rules) | Where-Object { $_ } | ForEach-Object { ConvertFrom-IwaGraphRule -GraphRule $_ })
@@ -299,6 +308,9 @@ function Test-IwaWin32AppSpec {
         if ($rule.Type -eq 'Script' -and [System.Text.Encoding]::UTF8.GetByteCount([string]$rule.ScriptContent) -gt 200KB) {
             & $add 'Rules' 'A detection script is larger than 200 KB.'
         }
+    }
+    if (@($rules | Where-Object { $_.Type -eq 'Raw' -and $_.Graph.'@odata.type' -eq '#microsoft.graph.win32LobAppPowerShellScriptRule' -and -not $_.Graph.scriptContent }).Count) {
+        & $add 'Rules' 'A script rule of this app came back from Intune without its content. Edit this app''s script rules in the portal ("Open in Intune").'
     }
     if ($UploadContent -and -not $Package) { & $add 'PackagePath' 'Select a valid .intunewin package to upload.' }
 

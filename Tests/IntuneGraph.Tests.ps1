@@ -53,7 +53,7 @@ Describe 'Get-IwaWin32App' {
         $apps.Count | Should -Be 2
         $apps[0].displayName | Should -Be 'Contoso Agent'
         $apps[1].displayName | Should -Be 'Contoso Viewer'
-        Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Uri -like "*isof('microsoft.graph.win32LobApp')*" }
+        Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Uri -like "*isof('microsoft.graph.win32LobApp')*" -and $Uri -like '*`$select=id,displayName,publisher' }
     }
     It 'returns every app with an empty search and handles an empty page' {
         Mock Invoke-IwaGraph { [pscustomobject]@{ value = @() } }
