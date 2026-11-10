@@ -208,7 +208,7 @@ function Show-IwaIntuneWindow {
         }
         $warnings = @()
         $msiRule = @($state.Rules | Where-Object { $_.Type -eq 'MsiProductCode' }) | Select-Object -First 1
-        if ($ui.ModeUpdate.IsChecked -and $state.Package.MsiInfo -and $msiRule -and $msiRule.ProductCode -ne $state.Package.MsiInfo.ProductCode) {
+        if ($ui.ModeUpdate.IsChecked -and $ui.UploadContent.IsChecked -and $state.Package.MsiInfo -and $msiRule -and $msiRule.ProductCode -ne $state.Package.MsiInfo.ProductCode) {
             $warnings += 'The package''s MSI product code differs from the detection rule; update the rule if this is a major upgrade.'
         }
         $lines = @($errors | ForEach-Object { $_.Message }) + $warnings
@@ -528,7 +528,9 @@ function Show-IwaIntuneWindow {
     })
     $ui.RetryUploadButton.Add_Click({
         if (-not $state.Package) { & $showStatus 'error' 'Select a valid .intunewin package first.'; return }
-        & $startTask $state.AppId $null $state.Package
+        # Send the current form too, so edits made after the failure are not lost.
+        $body = New-IwaWin32AppBody -Spec (& $getForm) -Package $state.Package -ForUpdate
+        & $startTask $state.AppId $body $state.Package
     })
     $ui.OpenInIntune.Add_Click({ if ($state.AppId) { Start-Process (Get-IwaIntunePortalUrl -AppId $state.AppId) } })
     $ui.CloseButton.Add_Click({ $win.Close() })
