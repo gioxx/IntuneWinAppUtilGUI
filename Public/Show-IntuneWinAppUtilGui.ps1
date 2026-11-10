@@ -198,6 +198,32 @@ function Show-IntuneWinAppUtilGUI {
     $ResultOpenFolder.Add_Click({ & $openResultFolder })
     $ResultCopyPath.Add_Click({ & $copyResultPath })
     $ResultClose.Add_Click({ & $hideResult })
+    # Publish to Intune: from the result panel (the package just built) or from the action row (any package).
+    $ResultUploadIntune = $window.FindName("ResultUploadIntune")
+    $IntuneButton       = $window.FindName("IntuneButton")
+    $openIntuneWindow = {
+        param([string]$PackagePath)
+        $version = $null
+        if ($PackagePath -and $SetupFile.Text) {
+            $setupPath = if ([System.IO.Path]::IsPathRooted($SetupFile.Text)) { $SetupFile.Text } else { Join-Path $SourceFolder.Text $SetupFile.Text }
+            if (Test-Path -LiteralPath $setupPath -PathType Leaf) {
+                try { $version = Get-IntuneFileVersion -Path $setupPath } catch { Write-IwaDebugLog "Reading the setup version failed: $($_.Exception.Message)" }
+            }
+        }
+        try {
+            Show-IwaIntuneWindow -Owner $window -ModuleRoot $moduleRoot -PackagePath $PackagePath -DisplayVersion $version
+        } catch {
+            Write-IwaDebugLog "Publish to Intune window failed: $($_.Exception.Message)"
+            [System.Windows.MessageBox]::Show($window, "Unable to open the Publish to Intune window:`n$($_.Exception.Message)", "Publish to Intune",
+                [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+        }
+    }
+    $ResultUploadIntune.Add_Click({
+        $packagePath = $resultState.Path
+        & $hideResult
+        & $openIntuneWindow $packagePath
+    })
+    $IntuneButton.Add_Click({ & $openIntuneWindow $null })
     $HelpButton      = $window.FindName("HelpButton")
     $ClearButton     = $window.FindName("ClearButton")
     $ExitButton      = $window.FindName("ExitButton")
