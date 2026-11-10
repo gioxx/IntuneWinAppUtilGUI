@@ -20,4 +20,10 @@ Describe 'IntuneWinAppUtilGUI module' {
         $LASTEXITCODE | Should -Be 0 -Because ($output | Out-String)
         [int]($output | Select-Object -Last 1) | Should -Be 2
     }
+
+    # Publish to Intune installs Microsoft.Graph.Authentication on demand; packaging must not need it.
+    It 'does not require Microsoft Graph modules' {
+        $data = Import-PowerShellDataFile -Path $manifestPath
+        @($data.RequiredModules | Where-Object { "$_" -like 'Microsoft.Graph*' }) | Should -BeNullOrEmpty
+    }
 }

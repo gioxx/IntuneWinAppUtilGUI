@@ -402,6 +402,8 @@
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <Button Name="RunButton" Content="Run" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
+                        <Button Name="IntuneButton" Content="Intune..." Width="104" Margin="0,0,8,0"
+                                ToolTip="Create or update a Win32 app in Intune with an existing .intunewin"/>
                         <Button Name="ClearButton" Content="Clear" Width="104" Margin="0,0,8,0"/>
                         <Button Name="ExitButton" Content="Exit (ESC)" Style="{StaticResource DangerButtonStyle}"/>
                     </StackPanel>
@@ -536,6 +538,8 @@
                     <Button Name="ResultOpenFolder" Content="Open folder" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
                     <Button Name="ResultCopyPath" Content="Copy path" Width="104" Margin="0,0,8,0"
                             ToolTip="Copy the full path of the .intunewin file to the clipboard"/>
+                    <Button Name="ResultUploadIntune" Content="Upload to Intune..." Width="140" Margin="0,0,8,0"
+                            ToolTip="Create or update a Win32 app in Intune with this package"/>
                     <Button Name="ResultClose" Content="Close" Width="104"/>
                 </StackPanel>
             </StackPanel>
