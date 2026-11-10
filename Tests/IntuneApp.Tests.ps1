@@ -156,6 +156,25 @@ Describe 'ConvertFrom-IwaGraphApp' {
         @($body.rules).Count | Should -Be 3
         $body.rules[2] | Should -Be $app.rules[2]
     }
+    It 'writes allowedArchitectures back for apps created in the portal' {
+        $portal = [pscustomobject]@{
+            displayName = 'Contoso Tool'; applicableArchitectures = 'none'; allowedArchitectures = 'x64,arm64'
+            rules = @([pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppProductCodeRule'; ruleType = 'detection'; productCode = '{11111111-2222-3333-4444-555555555555}'; productVersionOperator = 'notConfigured' })
+        }
+        $spec = ConvertFrom-IwaGraphApp -App $portal
+        $spec.ArchitectureProperty | Should -Be 'allowedArchitectures'
+        $body = New-IwaWin32AppBody -Spec $spec -ForUpdate
+        $body.allowedArchitectures | Should -Be 'x64,arm64'
+        $body.applicableArchitectures | Should -Be 'none'
+    }
+    It 'keeps applicableArchitectures for existing apps and new apps' {
+        $spec = ConvertFrom-IwaGraphApp -App $app
+        $spec.ArchitectureProperty | Should -Be 'applicableArchitectures'
+        $body = New-IwaWin32AppBody -Spec $spec -ForUpdate
+        $body.applicableArchitectures | Should -Be 'x64,x86'
+        $body.Contains('allowedArchitectures') | Should -BeFalse
+        (New-IwaWin32AppBody -Spec (New-ValidSpec)).Contains('allowedArchitectures') | Should -BeFalse
+    }
     It 'keeps a script rule without content as raw' {
         $noContent = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppPowerShellScriptRule'; ruleType = 'detection'; scriptContent = $null }
         (ConvertFrom-IwaGraphRule -GraphRule $noContent).Type | Should -Be 'Raw'
@@ -189,6 +208,15 @@ Describe 'Test-IwaWin32AppSpec' {
         $spec = New-ValidSpec
         $spec.Rules = @(@{ Type = 'Script'; ScriptContent = ('x' * 205000) })
         @(Test-IwaWin32AppSpec -Spec $spec | ForEach-Object { $_.Message }) | Should -Contain 'A detection script is larger than 200 KB.'
+    }
+    It 'blocks script rules that came back without content' {
+        foreach ($ruleType in 'detection', 'requirement') {
+            $spec = New-ValidSpec
+            $spec.Rules += @{ Type = 'Raw'; Graph = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppPowerShellScriptRule'; ruleType = $ruleType; scriptContent = $null } }
+            $found = @(Test-IwaWin32AppSpec -Spec $spec | Where-Object { $_.Field -eq 'Rules' })
+            $found.Count | Should -Be 1 -Because $ruleType
+            $found[0].Message | Should -Be 'A script rule of this app came back from Intune without its content. Edit this app''s script rules in the portal ("Open in Intune").'
+        }
     }
     It 'needs a package when the content is uploaded' {
         @(Test-IwaWin32AppSpec -Spec (New-ValidSpec) -UploadContent $true | ForEach-Object { $_.Field }) | Should -Contain 'PackagePath'

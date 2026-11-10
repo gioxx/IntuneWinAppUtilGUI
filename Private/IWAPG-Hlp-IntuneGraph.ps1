@@ -87,7 +87,7 @@ function Get-IwaWin32App {
     }
     # shortcut: filters by name on the client, since Graph does not combine isof() with contains(); fine up to a few thousand apps.
     $pattern = if ($Search) { '*' + [System.Management.Automation.WildcardPattern]::Escape($Search) + '*' } else { '*' }
-    $uri = $script:IwaGraphAppsUri + "?`$filter=isof('microsoft.graph.win32LobApp')&`$select=id,displayName,publisher,displayVersion"
+    $uri = $script:IwaGraphAppsUri + "?`$filter=isof('microsoft.graph.win32LobApp')&`$select=id,displayName,publisher"
     $apps = New-Object System.Collections.Generic.List[object]
     while ($uri) {
         $page = Invoke-IwaGraph -Method GET -Uri $uri
@@ -226,7 +226,7 @@ function Publish-IwaWin32AppContent {
     $blockList = '<?xml version="1.0" encoding="utf-8"?><BlockList>' + (($blockIds | ForEach-Object { "<Latest>$_</Latest>" }) -join '') + '</BlockList>'
     Invoke-IwaBlobRequest -Uri "$sasUri&comp=blocklist" -Body $blockList -ContentType 'application/xml'
     Invoke-IwaGraph -Method POST -Uri "$fileUri/commit" -Body @{ fileEncryptionInfo = $Package.EncryptionInfo } | Out-Null
-    Wait-IwaContentFileState -Uri $fileUri -State 'commitFile' -PollIntervalSeconds $PollIntervalSeconds | Out-Null
+    Wait-IwaContentFileState -Uri $fileUri -State 'commitFile' -PollIntervalSeconds $PollIntervalSeconds -MaxAttempts 600 | Out-Null
     $patch = [ordered]@{}
     if ($AppBody) { foreach ($key in $AppBody.Keys) { $patch[$key] = $AppBody[$key] } }
     $patch['@odata.type'] = '#microsoft.graph.win32LobApp'

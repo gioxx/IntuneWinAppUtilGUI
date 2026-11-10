@@ -42,6 +42,7 @@ $script:IwaIntuneTaskScript = {
     $ErrorActionPreference = 'Stop'
     $work = $null
     try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         foreach ($helper in @('IWAPG-Hlp-IntunePackage.ps1', 'IWAPG-Hlp-IntuneGraph.ps1')) {
             . (Join-Path $ModuleRoot "Private\$helper")
@@ -108,7 +109,7 @@ function Show-IwaIntuneWindow {
         Package = $null; DisplayVersion = $DisplayVersion; AppId = $null; Account = $null
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -189,6 +190,7 @@ function Show-IwaIntuneWindow {
             RunAsAccount          = [string]$ui.RunAsAccount.SelectedItem.Tag
             DeviceRestartBehavior = [string]$ui.DeviceRestartBehavior.SelectedItem.Tag
             MaxRunTimeInMinutes   = $ui.MaxRunTimeInMinutes.Text.Trim()
+            ArchitectureProperty  = $state.ArchitectureProperty
             Architectures         = $arch
             MinimumWindowsRelease = [string]$ui.MinimumWindowsRelease.SelectedItem.Tag
             Rules                 = @($state.Rules)
@@ -204,8 +206,14 @@ function Show-IwaIntuneWindow {
             $target = if ($err.Field -eq 'Rules') { 'RulesList' } else { [string]$err.Field }
             if ($fieldControls -contains $target) { $ui[$target].BorderBrush = $errorBrush }
         }
-        $ui.ValidationText.Text = (@($errors | ForEach-Object { $_.Message }) -join "`n")
-        $ui.ValidationText.Visibility = if ($errors.Count -and -not $state.Busy) { $visible } else { $collapsed }
+        $warnings = @()
+        $msiRule = @($state.Rules | Where-Object { $_.Type -eq 'MsiProductCode' }) | Select-Object -First 1
+        if ($ui.ModeUpdate.IsChecked -and $state.Package.MsiInfo -and $msiRule -and $msiRule.ProductCode -ne $state.Package.MsiInfo.ProductCode) {
+            $warnings += 'The package''s MSI product code differs from the detection rule; update the rule if this is a major upgrade.'
+        }
+        $lines = @($errors | ForEach-Object { $_.Message }) + $warnings
+        $ui.ValidationText.Text = ($lines -join "`n")
+        $ui.ValidationText.Visibility = if ($lines.Count -and -not $state.Busy) { $visible } else { $collapsed }
         $ui.UploadButton.IsEnabled = ($errors.Count -eq 0) -and -not $state.Busy
     }
     $refreshRules = {
@@ -227,6 +235,7 @@ function Show-IwaIntuneWindow {
             & $selectByTag $ui.RunAsAccount $Spec.RunAsAccount
             & $selectByTag $ui.DeviceRestartBehavior $Spec.DeviceRestartBehavior
             & $selectByTag $ui.MinimumWindowsRelease $Spec.MinimumWindowsRelease
+            $state.ArchitectureProperty = [string]$Spec.ArchitectureProperty
             $arch = @($Spec.Architectures)
             $ui.ArchX64.IsChecked = $arch -contains 'x64'
             $ui.ArchX86.IsChecked = $arch -contains 'x86'
@@ -242,9 +251,11 @@ function Show-IwaIntuneWindow {
         param([string]$Path)
         $state.Package = $null
         $ui.PackagePath.Text = $Path
+        # A retry sends the old package's content; after a new package the user must Upload again.
+        $ui.RetryUploadButton.Visibility = $collapsed
         if ($Path) {
             try { $state.Package = Read-IwaIntuneWinPackage -Path $Path }
-            catch { $ui.RetryUploadButton.Visibility = $collapsed; & $showStatus 'error' $_.Exception.Message }
+            catch { & $showStatus 'error' $_.Exception.Message }
         }
         if ($state.Package -and $ui.ModeNew.IsChecked) {
             & $setForm (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion)
@@ -336,7 +347,7 @@ function Show-IwaIntuneWindow {
         if ($task.State.Error) {
             Write-IwaDebugLog "Publish to Intune failed: $($task.State.Error)"
             $message = "Publishing failed: $($task.State.Error)"
-            if ($task.IsNew -and $task.State.Saved -and $state.LastUpload) {
+            if ($task.IsNew -and $state.LastUpload -and $task.State.AppId) {
                 $message += "`nThe app was created in Intune without content. Select Retry upload to send the package to the same app."
                 $ui.RetryUploadButton.Visibility = $visible
             } else {
@@ -417,7 +428,7 @@ function Show-IwaIntuneWindow {
         $state.LoadingResults = $true
         $ui.SearchResults.Items.Clear()
         foreach ($app in $state.SearchResults) {
-            [void]$ui.SearchResults.Items.Add(('{0}  |  {1}  |  {2}' -f $app.displayName, $app.publisher, $app.displayVersion))
+            [void]$ui.SearchResults.Items.Add(('{0}  |  {1}' -f $app.displayName, $app.publisher))
         }
         $state.LoadingResults = $false
         if ($state.SearchError) { & $showStatus 'error' "Search failed: $($state.SearchError)" }
@@ -512,7 +523,7 @@ function Show-IwaIntuneWindow {
 
     $ui.UploadButton.Add_Click({
         $package = if ($ui.UploadContent.IsChecked) { $state.Package } else { $null }
-        $body = New-IwaWin32AppBody -Spec (& $getForm) -Package $package -ForUpdate:(-not $ui.ModeNew.IsChecked)
+        $body = New-IwaWin32AppBody -Spec (& $getForm) -Package $package -ForUpdate:([bool]$state.AppId)
         & $startTask $state.AppId $body $package
     })
     $ui.RetryUploadButton.Add_Click({
@@ -528,7 +539,14 @@ function Show-IwaIntuneWindow {
     $win.Add_Closing({
         param($evtSender, $e)
         if (-not $state.Task) { return }
-        $answer = [System.Windows.MessageBox]::Show($win, 'An upload is still running. Stop it and close the window?', 'Publish to Intune',
+        if ($state.Task.Handle.IsCompleted) {
+            $timer.Stop()
+            try { $null = $state.Task.PowerShell.EndInvoke($state.Task.Handle) } catch { }
+            $state.Task.PowerShell.Dispose()
+            $state.Task = $null
+            return
+        }
+        $answer = [System.Windows.MessageBox]::Show($win, 'An upload is still running. Stop it and close the window? If the app was just created, it stays in Intune without content.', 'Publish to Intune',
             [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
         if ($answer -ne [System.Windows.MessageBoxResult]::Yes) { $e.Cancel = $true; return }
         $timer.Stop()
