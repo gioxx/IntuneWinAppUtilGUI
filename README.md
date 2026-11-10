@@ -106,7 +106,7 @@ To detect the file regardless of its version, leave the call without `-MinimumVe
 
 ## ☁️ Publish to Intune (preview)
 
-After packaging, **Upload to Intune...** in the result panel opens the *Publish to Intune* window. **Intune...** next to Run opens the same window for any `.intunewin`.
+After packaging, **Upload to Intune...** in the result panel opens the *Publish to Intune* window. **Publish to Intune...** next to Run opens the same window for any `.intunewin`.
 
 - **New app** creates a Win32 app. Name, version, commands and the MSI detection rule are prefilled from the package.
 - **Update existing** searches an app by name, loads its settings and lets you change them, and optionally uploads the new package. With a new package, the settings and the new content are applied together after the upload is committed; if anything fails, the app in Intune is left as it was.

@@ -9,7 +9,8 @@
         Background="#F4F7FB"
         FontFamily="Segoe UI"
         TextOptions.TextFormattingMode="Ideal"
-        TextOptions.TextRenderingMode="ClearType">
+        TextOptions.TextRenderingMode="ClearType"
+        UseLayoutRounding="True">
 
     <Window.Resources>
         <SolidColorBrush x:Key="InkBrush" Color="#182230"/>
@@ -400,13 +401,24 @@
                         </TextBlock>
                     </Border>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <Button Name="RunButton" Content="Run" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
-                        <Button Name="IntuneButton" Content="Intune..." Width="104" Margin="0,0,8,0"
+                    <!-- Two rows of buttons, as tall as the info box, so longer labels fit. -->
+                    <Grid Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Name="RunButton" Grid.Row="0" Grid.Column="0" Content="Run" Style="{StaticResource PrimaryButtonStyle}"
+                                Width="150" Margin="0,0,8,8"/>
+                        <Button Name="IntuneButton" Grid.Row="0" Grid.Column="1" Content="Publish to Intune..." Width="150" Margin="0,0,0,8"
                                 ToolTip="Create or update a Win32 app in Intune with an existing .intunewin"/>
-                        <Button Name="ClearButton" Content="Clear" Width="104" Margin="0,0,8,0"/>
-                        <Button Name="ExitButton" Content="Exit (ESC)" Style="{StaticResource DangerButtonStyle}"/>
-                    </StackPanel>
+                        <Button Name="ClearButton" Grid.Row="1" Grid.Column="0" Content="Clear" Width="150" Margin="0,0,8,0"/>
+                        <Button Name="ExitButton" Grid.Row="1" Grid.Column="1" Content="Exit (ESC)" Style="{StaticResource DangerButtonStyle}"
+                                Width="150"/>
+                    </Grid>
                 </Grid>
 
                 <TextBlock Grid.Row="3"
@@ -495,7 +507,7 @@
             CornerRadius="10"
             Background="#B30F172A"
             Visibility="Collapsed">
-        <Border Width="460"
+        <Border Width="560"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Padding="22,20"

@@ -45,6 +45,24 @@ Describe 'Get-IwaWin32AppDefault' {
         $spec.Rules[0].Type | Should -Be 'MsiProductCode'
         $spec.Rules[0].ProductCode | Should -Be '{11111111-2222-3333-4444-555555555555}'
     }
+
+    It 'uses the name and publisher read from the source folder over the package values' {
+        $spec = Get-IwaWin32AppDefault -Package $exePackage -DisplayVersion '26.06' -DisplayName 'Contoso Tool (x64)' -Publisher 'Contoso Ltd'
+        $spec.DisplayName | Should -Be 'Contoso Tool (x64)'
+        $spec.Description | Should -Be 'Contoso Tool (x64)'
+        $spec.Publisher | Should -Be 'Contoso Ltd'
+        $spec.DisplayVersion | Should -Be '26.06'
+    }
+}
+
+Describe 'Get-IwaWindowsReleaseLabel' {
+    It 'labels <Release> as <Label>' -TestCases @(
+        @{ Release = '1607'; Label = 'Windows 10 1607' }
+        @{ Release = 'Windows10_22H2'; Label = 'Windows 10 22H2' }
+        @{ Release = 'Windows11_24H2'; Label = 'Windows 11 24H2' }
+    ) {
+        Get-IwaWindowsReleaseLabel -Release $Release | Should -Be $Label
+    }
 }
 
 Describe 'New-IwaDetectionRule' {

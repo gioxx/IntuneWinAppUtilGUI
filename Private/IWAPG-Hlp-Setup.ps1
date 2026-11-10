@@ -52,14 +52,14 @@ function Get-RelativePath {
 function Get-MsiPackageMetadata {
     <#
     .SYNOPSIS
-    Reads ProductName and ProductVersion from an MSI package.
+    Reads ProductName, ProductVersion and Manufacturer from an MSI package.
     .DESCRIPTION
     Uses the Windows Installer COM object to inspect the MSI Property table.
     Returns $null when the file cannot be read or the required values are missing.
     .PARAMETER MsiPath
     Full path to the MSI file.
     .OUTPUTS
-    [pscustomobject] with ProductName and ProductVersion, or $null.
+    [pscustomobject] with ProductName, ProductVersion and Manufacturer (when present), or $null.
     #>
 
     [CmdletBinding()]
@@ -79,7 +79,7 @@ function Get-MsiPackageMetadata {
         $database = $installer.OpenDatabase($fullPath, 0)
 
         $metadata = [ordered]@{}
-        foreach ($propertyName in @('ProductName', 'ProductVersion')) {
+        foreach ($propertyName in @('ProductName', 'ProductVersion', 'Manufacturer')) {
             $view = $null
             try {
                 $query = 'SELECT `Value` FROM `Property` WHERE `Property`=''' + $propertyName + ''''
@@ -118,6 +118,56 @@ function Get-MsiPackageMetadata {
             try { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer) } catch { }
         }
     }
+}
+
+function Get-SetupAppInfo {
+    <#
+    .SYNOPSIS
+    Reads the app name, version and publisher of the package in a source folder.
+    .DESCRIPTION
+    PSADT first (AppName/AppVersion/AppVendor in Invoke-AppDeployToolkit.ps1 next to Invoke-AppDeployToolkit.exe);
+    when the PSADT AppName is empty, the first MSI found (preferring one under \Files\) fills the missing values.
+    Values are returned as they are, not sanitized for a file name.
+    .OUTPUTS
+    [pscustomobject] with Name, Version and Publisher (any may be $null), or $null when nothing was found.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$SourcePath)
+
+    if (-not (Test-Path $SourcePath)) { return $null }
+    $info = [ordered]@{ Name = $null; Version = $null; Publisher = $null }
+
+    $exeHit = Get-ChildItem -Path $SourcePath -Filter 'Invoke-AppDeployToolkit.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($exeHit) {
+        $ps1Path = Join-Path $exeHit.Directory.FullName 'Invoke-AppDeployToolkit.ps1'
+        if (Test-Path $ps1Path) {
+            $content = Get-Content $ps1Path -Raw
+            # Support common PSADT forms such as $appName, $adtSession.AppName, and direct AppName assignments.
+            foreach ($pair in @(@('Name', 'AppName'), @('Version', 'AppVersion'), @('Publisher', 'AppVendor'))) {
+                if ($content -match ('(?im)(?:\$[\w.]+\.)?' + $pair[1] + '\s*=\s*[''"]([^''"]*)[''"]') -and $matches[1].Trim()) {
+                    $info[$pair[0]] = $matches[1].Trim()
+                }
+            }
+        }
+    }
+
+    # Fall back to MSI metadata when the PSADT AppName is missing.
+    if (-not $info.Name) {
+        $msiHit = Get-ChildItem -Path $SourcePath -Filter '*.msi' -File -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object @{ Expression = { if ($_.FullName -match '\\Files\\') { 0 } else { 1 } } }, FullName |
+            Select-Object -First 1
+        if ($msiHit) {
+            $msiMeta = Get-MsiPackageMetadata -MsiPath $msiHit.FullName
+            if ($msiMeta) {
+                if ($msiMeta.ProductName) { $info.Name = $msiMeta.ProductName }
+                if (-not $info.Version -and $msiMeta.ProductVersion) { $info.Version = $msiMeta.ProductVersion }
+                if (-not $info.Publisher -and $msiMeta.Manufacturer) { $info.Publisher = $msiMeta.Manufacturer }
+            }
+        }
+    }
+
+    if (-not ($info.Name -or $info.Version -or $info.Publisher)) { return $null }
+    [pscustomobject]$info
 }
 
 function Get-SetupSuggestion {
@@ -188,36 +238,9 @@ function Get-SetupSuggestion {
     $finalCurrent = if ($CurrentFinalFilename) { $CurrentFinalFilename.Trim() } else { '' }
     if (-not $finalCurrent) {
             try {
-                # Look for Invoke-AppDeployToolkit.ps1 in the same folder when we are dealing with PSADT packages.
-                $appName = $null
-                $appVersion = $null
-
-                if ($exeHit) {
-                    $ps1Path = Join-Path $exeHit.Directory.FullName 'Invoke-AppDeployToolkit.ps1'
-                    if (Test-Path $ps1Path) {
-                        $content = Get-Content $ps1Path -Raw
-
-                        # Support common PSADT forms such as $appName, $adtSession.AppName, and direct AppName assignments.
-                        if ($content -match '(?im)(?:\$[\w.]+\.)?AppName\s*=\s*[''"]([^''"]*)[''"]') { $appName = $matches[1] }
-                        if ($content -match '(?im)(?:\$[\w.]+\.)?AppVersion\s*=\s*[''"]([^''"]*)[''"]') { $appVersion = $matches[1] }
-                    }
-                }
-
-                # Fall back to MSI metadata when PSADT metadata is missing or incomplete.
-                if ([string]::IsNullOrWhiteSpace($appName)) {
-                    $msiSource = if ($msiHit) { $msiHit } elseif ($selectedHit.Extension -ieq '.msi') { $selectedHit } else { $null }
-                    if ($msiSource) {
-                        $msiMeta = Get-MsiPackageMetadata -MsiPath $msiSource.FullName
-                        if ($msiMeta) {
-                            if ([string]::IsNullOrWhiteSpace($appName) -and $msiMeta.ProductName) {
-                                $appName = $msiMeta.ProductName
-                            }
-                            if ([string]::IsNullOrWhiteSpace($appVersion) -and $msiMeta.ProductVersion) {
-                                $appVersion = $msiMeta.ProductVersion
-                            }
-                        }
-                    }
-                }
+                $info = Get-SetupAppInfo -SourcePath $SourcePath
+                $appName = if ($info) { $info.Name } else { $null }
+                $appVersion = if ($info) { $info.Version } else { $null }
 
                 # Sanitize function: remove spaces, replace invalid filename chars with '-'
                 function _Sanitize([string]$s) {
