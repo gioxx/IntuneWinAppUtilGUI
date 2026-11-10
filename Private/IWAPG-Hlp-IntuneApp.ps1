@@ -162,9 +162,13 @@ function ConvertFrom-IwaGraphRule {
             # Without content, a script rule rebuilt here would wipe the script in Intune.
             if (-not $GraphRule.scriptContent) { return $raw }
             if ($GraphRule.operationType -and $GraphRule.operationType -ne 'notConfigured') { return $raw }
+            try { $bytes = [Convert]::FromBase64String([string]$GraphRule.scriptContent) } catch { return $raw }
+            $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+            # Only text that re-encodes to the same bytes is editable; UTF-16 or ANSI scripts stay raw so Intune's copy is not altered.
+            if ($text.Contains([char]0) -or [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($text)) -ne [string]$GraphRule.scriptContent) { return $raw }
             return @{
                 Type = 'Script'
-                ScriptContent = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$GraphRule.scriptContent))
+                ScriptContent = $text
                 RunAs32Bit = [bool]$GraphRule.runAs32Bit; EnforceSignatureCheck = [bool]$GraphRule.enforceSignatureCheck
             }
         }
@@ -257,7 +261,7 @@ function ConvertFrom-IwaGraphApp {
         DeviceRestartBehavior = $(if ($experience -and $experience.deviceRestartBehavior) { [string]$experience.deviceRestartBehavior } else { 'basedOnReturnCode' })
         MaxRunTimeInMinutes   = $(if ($experience -and $experience.maxRunTimeInMinutes) { [int]$experience.maxRunTimeInMinutes } else { 60 })
         Architectures         = @($arch -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne 'none' })
-        MinimumWindowsRelease = [string]$App.minimumSupportedWindowsRelease
+        MinimumWindowsRelease = $(if ($App.minimumSupportedWindowsRelease) { [string]$App.minimumSupportedWindowsRelease } else { $script:IwaWindowsReleases[0] })
         Rules                 = @(@($App.rules) | Where-Object { $_ } | ForEach-Object { ConvertFrom-IwaGraphRule -GraphRule $_ })
     }
 }
