@@ -84,6 +84,11 @@ Describe 'Invoke-IwaBlobRequest' {
         Mock Invoke-WebRequest { throw 'busy' }
         { Invoke-IwaBlobRequest -Uri 'https://blob.example/c?sv=1' -Body 'x' } | Should -Throw '*after 3 attempts*'
     }
+    It 'passes the method, headers and content type to Invoke-WebRequest' {
+        Mock Invoke-WebRequest { }
+        Invoke-IwaBlobRequest -Uri 'https://blob.example/c?sv=1' -Body 'x' -Headers @{ 'x-ms-blob-type' = 'BlockBlob' } -ContentType 'application/xml'
+        Should -Invoke Invoke-WebRequest -Times 1 -ParameterFilter { $Method -eq 'Put' -and $Headers['x-ms-blob-type'] -eq 'BlockBlob' -and $ContentType -eq 'application/xml' -and $UseBasicParsing }
+    }
 }
 
 Describe 'Wait-IwaContentFileState' {
@@ -108,6 +113,8 @@ Describe 'Publish-IwaWin32AppContent' {
     BeforeEach {
         $script:calls = New-Object System.Collections.Generic.List[string]
         $script:blockList = $null
+        $script:blockListType = $null
+        $script:blockPuts = New-Object System.Collections.Generic.List[object]
         Mock Start-Sleep { }
         Mock Invoke-IwaGraph {
             $script:calls.Add("$Method $Uri")
@@ -121,7 +128,11 @@ Describe 'Publish-IwaWin32AppContent' {
         }
         Mock Invoke-IwaBlobRequest {
             $script:calls.Add("BLOB $Uri")
-            if ($Uri -like '*comp=blocklist') { $script:blockList = $Body }
+            if ($Uri -like '*comp=block&*') {
+                $rawId = [regex]::Match($Uri, 'blockid=([^&]+)').Groups[1].Value
+                $script:blockPuts.Add([pscustomobject]@{ Id = [uri]::UnescapeDataString($rawId); Length = $Body.Length; Header = $Headers['x-ms-blob-type'] })
+            }
+            if ($Uri -like '*comp=blocklist') { $script:blockList = $Body; $script:blockListType = $ContentType }
         }
         $content = Join-Path $TestDrive 'IntunePackage.intunewin'
         [System.IO.File]::WriteAllBytes($content, [byte[]](1..13))
@@ -136,6 +147,16 @@ Describe 'Publish-IwaWin32AppContent' {
         $patch = $script:calls.IndexOf((@($script:calls | Where-Object { $_ -like 'PATCH*/mobileApps/app1' }))[0])
         $commit | Should -BeGreaterOrEqual 0
         $commit | Should -BeLessThan $patch
+        $expectedIds = @('0000', '0001', '0002' | ForEach-Object { [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($_)) })
+        @($script:blockPuts | ForEach-Object { $_.Length }) | Should -Be @(5, 5, 3)
+        @($script:blockPuts | ForEach-Object { $_.Header } | Select-Object -Unique) | Should -Be @('BlockBlob')
+        @($script:blockPuts | ForEach-Object { $_.Id }) | Should -Be $expectedIds
+        @($expectedIds | ForEach-Object { $_.Length } | Select-Object -Unique).Count | Should -Be 1
+        @([regex]::Matches($script:blockList, '<Latest>([^<]+)</Latest>') | ForEach-Object { $_.Groups[1].Value }) | Should -Be $expectedIds
+        $script:blockListType | Should -Be 'application/xml'
+        $blocklistCall = $script:calls.IndexOf((@($script:calls | Where-Object { $_ -like 'BLOB*comp=blocklist' }))[0])
+        $blocklistCall | Should -BeGreaterOrEqual 0
+        $blocklistCall | Should -BeLessThan $commit
         Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'POST' -and $Uri -like '*/files' -and $Body.size -eq 99 -and $Body.sizeEncrypted -eq 13 }
         Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'POST' -and $Uri -like '*/commit' -and $Body.fileEncryptionInfo.encryptionKey -eq 'a2V5' }
         Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'PATCH' -and $Body.committedContentVersion -eq 'cv1' }
