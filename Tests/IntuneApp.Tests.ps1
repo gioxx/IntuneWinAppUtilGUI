@@ -204,3 +204,29 @@ Describe 'Get-IwaRuleSummary' {
         Get-IwaRuleSummary -Rule @{ Type = 'Raw'; Graph = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppRegistryRule'; ruleType = 'requirement' } } | Should -Be 'Kept from Intune: win32LobAppRegistryRule (requirement)'
     }
 }
+
+Describe 'ConvertFrom-IwaGraphRule' {
+    It 'keeps a UTF-16 script unchanged as raw' {
+        $utf16 = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes('exit 0'))
+        $rule = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppPowerShellScriptRule'; ruleType = 'detection'; scriptContent = $utf16 }
+        (ConvertFrom-IwaGraphRule -GraphRule $rule).Type | Should -Be 'Raw'
+    }
+    It 'keeps a script with malformed base64 as raw without throwing' {
+        $rule = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppPowerShellScriptRule'; ruleType = 'detection'; scriptContent = 'not base64!' }
+        (ConvertFrom-IwaGraphRule -GraphRule $rule).Type | Should -Be 'Raw'
+    }
+    It 'still maps a UTF-8 script to Script' {
+        $utf8 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes('exit 0'))
+        $rule = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppPowerShellScriptRule'; ruleType = 'detection'; scriptContent = $utf8; runAs32Bit = $false; enforceSignatureCheck = $false }
+        $mapped = ConvertFrom-IwaGraphRule -GraphRule $rule
+        $mapped.Type | Should -Be 'Script'
+        $mapped.ScriptContent | Should -Be 'exit 0'
+    }
+}
+
+Describe 'ConvertFrom-IwaGraphApp windows release default' {
+    It 'falls back to the lowest release when Intune sends none' {
+        $app = [pscustomobject]@{ displayName = 'Contoso Tool'; rules = @() }
+        (ConvertFrom-IwaGraphApp -App $app).MinimumWindowsRelease | Should -Be $script:IwaWindowsReleases[0]
+    }
+}
