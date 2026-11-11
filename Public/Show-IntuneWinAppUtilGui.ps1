@@ -419,6 +419,9 @@ function Show-IntuneWinAppUtilGUI {
             ToolPath = $ToolPathBox.Text.Trim()
             UpdateCheckEnabled = $updateCheckEnabled
             RecentOutputFolders = @($OutputFolder.Items | ForEach-Object { [string]$_ })
+            # Publish to Intune: custom app registration (empty = Microsoft's app)
+            IntuneClientId = $state.ClientId
+            IntuneTenantId = $state.TenantId
         }
         $cfg | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
     }
@@ -437,6 +440,7 @@ function Show-IntuneWinAppUtilGUI {
             }
             # Missing folders are kept: Run recreates the output folder when it does not exist.
             & $setRecentOutputFolders (Get-IwaRecentFolderList -Recent @($cfg.RecentOutputFolders | Where-Object { $_ -is [string] }))
+            & $iwaSetConnection ([string]$cfg.IntuneClientId) ([string]$cfg.IntuneTenantId)
         } catch {}
     }
 
@@ -1069,6 +1073,16 @@ function Show-IntuneWinAppUtilGUI {
             $e.Handled = $true
             return
         }
+        if ($ui.ConnectionOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
+            # Connection settings open: Enter saves, Esc cancels. A focused button handles its own Enter.
+            if ($e.Key -eq 'Tab') { return }
+            switch ($e.Key) {
+                'Return' { & $iwaSaveConnection }
+                'Escape' { & $iwaHideConnection }
+            }
+            $e.Handled = $true
+            return
+        }
         if ($ui.DoneOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
             # "App created/updated in Intune" open: Esc and Enter close it.
             if ($e.Key -eq 'Tab') { return }
@@ -1102,7 +1116,7 @@ function Show-IntuneWinAppUtilGUI {
     $window.Add_PreviewKeyDown({
         param($evtSender, $e)
         if ($e.Key -ne 'Tab' -or -not ([System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control)) { return }
-        $overlayOpen = @($ResultOverlay, $DialogOverlay, $HelpOverlay, $ui.DoneOverlay) | Where-Object { $_.Visibility -eq [System.Windows.Visibility]::Visible }
+        $overlayOpen = @($ResultOverlay, $DialogOverlay, $HelpOverlay, $ui.DoneOverlay, $ui.ConnectionOverlay) | Where-Object { $_.Visibility -eq [System.Windows.Visibility]::Visible }
         if ($runState.Busy -or $overlayOpen) { return }
         if ($TabPackage.IsChecked) { $TabIntune.IsChecked = $true } else { $TabPackage.IsChecked = $true }
         $e.Handled = $true

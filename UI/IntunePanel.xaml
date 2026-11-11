@@ -32,6 +32,13 @@
                             <Button Name="SignInButton" Content="Sign in" Width="104"/>
                         </StackPanel>
                     </Grid>
+                    <!-- Which app signs in, and where to change it (#30) -->
+                    <TextBlock HorizontalAlignment="Right" Margin="0,6,0,0" FontSize="11" Foreground="{StaticResource MutedBrush}">
+                        <Run Text="Signs in with"/>
+                        <Run Name="ConnectionAppText" Text="Microsoft Graph Command Line Tools"/>
+                        <Run Text="-"/>
+                        <Hyperlink Name="ConnectionSettingsLink" ToolTip="Use your own app registration (Client ID and Tenant ID)">Connection settings</Hyperlink>
+                    </TextBlock>
                     <TextBlock Name="GraphStatusText" Style="{StaticResource HelpTextStyle}" MaxWidth="720" Visibility="Collapsed"/>
                 </StackPanel>
             </Border>
