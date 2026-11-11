@@ -90,7 +90,7 @@ jobs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add Tools/IntuneWinAppUtilVersions.md Tools/last_processed_version.txt
+        git add Tools/IntuneWinAppUtilVersions.md Tools/IntuneWinAppUtilVersions.json Tools/last_processed_version.txt
         git diff --cached --quiet || git commit -m "Update IntuneWinAppUtil version list to ${{ steps.get_latest.outputs.latest_tag }}"
         git push
       shell: bash

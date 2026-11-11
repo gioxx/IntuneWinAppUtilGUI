@@ -29,6 +29,7 @@
 
     Modifications history:
     - 2024-09-04: Initial version.
+    - 2026-11-11: Also writes IntuneWinAppUtilVersions.json; sorts releases by version; cleans up only its own files.
 #>
 
 param(
@@ -43,6 +44,7 @@ if (-not (Test-Path $OutputDirectory)) {
 }
 
 $markdownFile = Join-Path $OutputDirectory "IntuneWinAppUtilVersions.md"
+$jsonFile = Join-Path $OutputDirectory "IntuneWinAppUtilVersions.json"
 $apiUrl = "https://api.github.com/repos/$RepositoryOwner/$RepositoryName/tags?per_page=$MaxReleases"
 $headers = @{
     "User-Agent" = "PowerShell"
@@ -60,61 +62,65 @@ $results = @()
 $total = $tags.Count
 $current = 0
 
-# Initialize index to track first release as 'latest'
-$index = 0
-
 foreach ($tag in $tags) {
     $current++
-    $index++
     $version = $tag.name
     $zipUrl = "https://github.com/$RepositoryOwner/$RepositoryName/archive/refs/tags/$version.zip"
     $zipFile = Join-Path $OutputDirectory "$version.zip"
     $extractPath = Join-Path $OutputDirectory $version
-    
+
     Write-Progress -Activity "Downloading ZIP ($version)" -Status "Release $current of $total" -PercentComplete (($current / $total) * 100)
-    
-    if (-not (Test-Path $extractPath)) {
-        try {
+
+    try {
+        if (-not (Test-Path $extractPath)) {
             Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile -ErrorAction Stop
             Expand-Archive -Path $zipFile -DestinationPath $extractPath -Force
-        } catch {
-            Write-Warning "Failed to download or extract $($version): $_"
-            continue
         }
-    }
-    
-    # Search for IntuneWinAppUtil.exe inside extracted files, read FileVersion property or mark as "Not found"
-    $exePath = Get-ChildItem -Path $extractPath -Recurse -Filter "IntuneWinAppUtil.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-    $fileVersion = if ($exePath) { (Get-Item $exePath.FullName).VersionInfo.FileVersion } else { "Not found" }
-    
-    # Append "(latest)" tag to the first release's version and file version
-    if ($index -eq 1) {
-        $version += " (latest)"
-        $fileVersion += " (latest)"
-    }
-    
-    $results += [PSCustomObject]@{
-        ReleaseVersion = $version
-        FileVersion    = $fileVersion
+
+        # Search for IntuneWinAppUtil.exe inside extracted files, read FileVersion property or mark as "Not found"
+        $exePath = Get-ChildItem -Path $extractPath -Recurse -Filter "IntuneWinAppUtil.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        $fileVersion = if ($exePath) { (Get-Item $exePath.FullName).VersionInfo.FileVersion } else { "Not found" }
+
+        $results += [PSCustomObject]@{
+            Release     = $version
+            FileVersion = $fileVersion
+        }
+    } catch {
+        Write-Warning "Failed to download or extract $($version): $_"
+    } finally {
+        # Remove only what this script created: -OutputDirectory may be a folder with other content.
+        foreach ($p in @($zipFile, $extractPath)) {
+            if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue }
+        }
     }
 }
 
 Write-Progress -Activity "Complete" -Completed
 
-# Clean up downloaded ZIP files and extracted folders
-try {
-    Write-Host "Cleaning up downloaded files and extracted folders ..."
-    Get-ChildItem -Path $OutputDirectory -Filter *.zip -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-    Get-ChildItem -Path $OutputDirectory -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-} catch {
-    Write-Warning "Cleanup failed: $_"
-}
+# Newest first, by tag number (tags are not always prefixed with "v", so API order is not reliable).
+$results = @($results | Sort-Object -Descending -Property @{ Expression = {
+    $v = $null
+    if ([version]::TryParse(($_.Release -replace '^v', ''), [ref]$v)) { $v } else { [version]'0.0' }
+} })
 
 $table = "| Release Version | FileVersion |`n"
 $table += "|-----------------|-------------|`n"
+$first = $true
 foreach ($row in $results) {
-    $table += "| $($row.ReleaseVersion) | $($row.FileVersion) |`n"
+    $suffix = if ($first) { ' (latest)' } else { '' }
+    $table += "| $($row.Release)$suffix | $($row.FileVersion)$suffix |`n"
+    $first = $false
 }
 
 Write-Host "`n$table"
 $table | Out-File -FilePath $markdownFile -Encoding UTF8
+
+# Machine-readable copy, read by the GUI (update check) and by the KB version history page.
+$json = [ordered]@{
+    updated  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    source   = "https://github.com/$RepositoryOwner/$RepositoryName"
+    latest   = if ($results.Count) { [ordered]@{ release = $results[0].Release; fileVersion = $results[0].FileVersion } } else { $null }
+    releases = @($results | ForEach-Object { [ordered]@{ release = $_.Release; fileVersion = $_.FileVersion } })
+}
+# UTF-8 without BOM on both PowerShell 5.1 and 7.
+[System.IO.File]::WriteAllText($jsonFile, ($json | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding $false))

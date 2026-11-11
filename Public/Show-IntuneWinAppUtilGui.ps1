@@ -100,6 +100,7 @@ function Show-IntuneWinAppUtilGUI {
     $ToolPathBox     = $window.FindName("ToolPathBox")
     $ToolVersionText = $window.FindName("ToolVersionText")
     $DownloadTool    = $window.FindName("DownloadTool")
+    $CheckToolUpdate = $window.FindName("CheckToolUpdate")
     
     $FinalFilename   = $window.FindName("FinalFilename")
     
@@ -588,17 +589,8 @@ function Show-IntuneWinAppUtilGUI {
         }
     })
 
-    # Force download the IntuneWinAppUtil.exe tool
-    $DownloadTool.Add_Click({
-        $confirm = [System.Windows.MessageBox]::Show(
-            $window,
-            "Download the latest IntuneWinAppUtil.exe now?`n`nIf a cached copy already exists in the local bin folder, it will be replaced.",
-            "Refresh IntuneWinAppUtil.exe",
-            [System.Windows.MessageBoxButton]::YesNo,
-            [System.Windows.MessageBoxImage]::Question
-        )
-        if ($confirm -ne [System.Windows.MessageBoxResult]::Yes) { return }
-
+    # Downloads the latest IntuneWinAppUtil.exe into the local bin folder and selects it.
+    $downloadToolNow = {
         try {
             $newPath = Invoke-DownloadIntuneTool
             $ToolPathBox.Text = $newPath
@@ -620,6 +612,49 @@ function Show-IntuneWinAppUtilGUI {
                 [System.Windows.MessageBoxImage]::Error
             )
         }
+    }
+
+    # Force download the IntuneWinAppUtil.exe tool
+    $DownloadTool.Add_Click({
+        $confirm = [System.Windows.MessageBox]::Show(
+            $window,
+            "Download the latest IntuneWinAppUtil.exe now?`n`nIf a cached copy already exists in the local bin folder, it will be replaced.",
+            "Refresh IntuneWinAppUtil.exe",
+            [System.Windows.MessageBoxButton]::YesNo,
+            [System.Windows.MessageBoxImage]::Question
+        )
+        if ($confirm -eq [System.Windows.MessageBoxResult]::Yes) { & $downloadToolNow }
+    })
+
+    # Check for updates: compares the selected IntuneWinAppUtil.exe with the latest release
+    # (Tools/IntuneWinAppUtilVersions.json in this repository) and offers the download only when needed.
+    $CheckToolUpdate.Add_Click({
+        $toolPath = $ToolPathBox.Text.Trim()
+        $installed = if ($toolPath -and (Test-Path -LiteralPath $toolPath -PathType Leaf)) { Get-ExeVersion -Path $toolPath } else { $null }
+
+        $window.Cursor = [System.Windows.Input.Cursors]::Wait
+        try {
+            $latest = Get-IntuneWinAppUtilLatestVersion
+        } catch {
+            $window.Cursor = $null
+            [System.Windows.MessageBox]::Show($window, "Unable to check for updates:`n$($_.Exception.Message)", "Check for updates",
+                [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+            return
+        }
+        $window.Cursor = $null
+
+        $latestText = "$($latest.FileVersion) (release $($latest.Release))"
+        if (-not (Test-IntuneWinAppUtilUpdateAvailable -InstalledVersion $installed -LatestVersion $latest.FileVersion)) {
+            [System.Windows.MessageBox]::Show($window, "IntuneWinAppUtil.exe is up to date.`n`nInstalled: $installed`nLatest: $latestText", "Check for updates",
+                [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+            return
+        }
+
+        $current = if ($installed) { "Installed: $installed" } else { 'No IntuneWinAppUtil.exe selected, or its version cannot be read.' }
+        $answer = [System.Windows.MessageBox]::Show($window,
+            "A newer IntuneWinAppUtil.exe is available.`n`n$current`nLatest: $latestText`n`nDownload it now? It is saved in the local bin folder and selected here.",
+            "Check for updates", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
+        if ($answer -eq [System.Windows.MessageBoxResult]::Yes) { & $downloadToolNow }
     })
 
     # When user types/pastes the tool path manually, show version if valid
@@ -940,36 +975,15 @@ function Show-IntuneWinAppUtilGUI {
         $FinalFilename.Clear()
     })
 
-    # Help button: explain command-line switches and keyboard shortcuts
+    # Help overlay: command-line switches and keyboard shortcuts (content in UI.xaml)
+    $HelpOverlay = $window.FindName("HelpOverlay")
+    $HelpClose   = $window.FindName("HelpClose")
+    $hideHelp = { $HelpOverlay.Visibility = [System.Windows.Visibility]::Collapsed }
     $HelpButton.Add_Click({
-        $helpText = @"
-Command-line switches
-
-Show-IntuneWinAppUtilGUI -ShowVersion
-Shows the installed module version and the latest available version in the header banner.
-
-Show-IntuneWinAppUtilGUI -ForceUpdateBanner
-Simulates an available update banner for testing the notification area.
-
-Show-IntuneWinAppUtilGUI -Diag
-Writes startup and shutdown diagnostics (handles, GDI handles, memory usage) and a detailed log of every packaging run, including the tool output and any locked files, to %APPDATA%\IntuneWinAppUtilGUI\logs.
-
-Standard PowerShell switches
--Verbose and -Debug are preserved when the GUI relaunches itself in STA mode.
-
-Keyboard shortcuts
-Enter: run packaging.
-Esc: ask before closing the window.
-"@
-
-        [System.Windows.MessageBox]::Show(
-            $window,
-            $helpText,
-            "Help",
-            [System.Windows.MessageBoxButton]::OK,
-            [System.Windows.MessageBoxImage]::Information
-        ) | Out-Null
+        $HelpOverlay.Visibility = [System.Windows.Visibility]::Visible
+        $null = $HelpClose.Focus()
     })
+    $HelpClose.Add_Click({ & $hideHelp })
 
     # Exit button: close the window
     $ExitButton.Add_Click({
@@ -988,6 +1002,13 @@ Esc: ask before closing the window.
                 'Return' { & $openResultFolder }
                 'Escape' { & $hideResult }
             }
+            $e.Handled = $true
+            return
+        }
+        if ($HelpOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
+            # Help open: Esc and Enter close it; nothing reaches the form behind it.
+            if ($e.Key -eq 'Tab') { return }
+            if ($e.Key -in 'Escape', 'Return') { & $hideHelp }
             $e.Handled = $true
             return
         }
