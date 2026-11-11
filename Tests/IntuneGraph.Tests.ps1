@@ -255,3 +255,72 @@ Describe 'Graph module and account' {
         Get-IwaIntuneAccount | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Custom app registration (#30)' {
+    BeforeAll {
+        if (-not (Get-Command Connect-MgGraph -ErrorAction SilentlyContinue)) { function script:Connect-MgGraph { param($Scopes, $ClientId, $TenantId, [switch]$NoWelcome) } }
+        if (-not (Get-Command Get-MgContext -ErrorAction SilentlyContinue)) { function script:Get-MgContext { } }
+        $customId = '11111111-2222-3333-4444-555555555555'
+    }
+    It 'accepts both values empty, or a client GUID with a tenant GUID or domain' {
+        Test-IwaConnectionSetting | Should -BeNullOrEmpty
+        Test-IwaConnectionSetting -ClientId $customId -TenantId '00000000-0000-0000-0000-000000000000' | Should -BeNullOrEmpty
+        Test-IwaConnectionSetting -ClientId " $customId " -TenantId 'contoso.onmicrosoft.com' | Should -BeNullOrEmpty
+    }
+    It 'rejects one value without the other, a client id that is not a GUID and a bad tenant' {
+        Test-IwaConnectionSetting -ClientId $customId | Should -BeLike 'Fill in both*'
+        Test-IwaConnectionSetting -TenantId 'contoso.onmicrosoft.com' | Should -BeLike 'Fill in both*'
+        Test-IwaConnectionSetting -ClientId 'contoso-app' -TenantId 'contoso.onmicrosoft.com' | Should -BeLike 'The Client ID*'
+        Test-IwaConnectionSetting -ClientId $customId -TenantId 'contoso' | Should -BeLike 'The Tenant ID*'
+    }
+    It 'signs in with the custom app only when one is set' {
+        Mock Import-Module { }
+        Mock Connect-MgGraph { }
+        Mock Get-MgContext { }
+        Connect-IwaIntune | Out-Null
+        Should -Invoke Connect-MgGraph -Times 1 -Exactly -ParameterFilter { -not $ClientId -and -not $TenantId -and $Scopes -eq 'DeviceManagementApps.ReadWrite.All' }
+        Connect-IwaIntune -ClientId $customId -TenantId 'contoso.onmicrosoft.com' | Out-Null
+        Should -Invoke Connect-MgGraph -Times 1 -Exactly -ParameterFilter { $ClientId -eq $customId -and $TenantId -eq 'contoso.onmicrosoft.com' }
+    }
+    It 'counts a session only when it uses the configured app' {
+        Mock Get-MgContext { [pscustomobject]@{ Account = 'admin@contoso.com'; ClientId = '14d82eec-204b-4c2f-b7e8-296a70dab67e'; Scopes = @('DeviceManagementApps.ReadWrite.All') } }
+        Get-IwaIntuneAccount | Should -Be 'admin@contoso.com'
+        Get-IwaIntuneAccount -ClientId $customId | Should -BeNullOrEmpty
+        Mock Get-MgContext { [pscustomobject]@{ Account = 'admin@contoso.com'; ClientId = $customId; Scopes = @('DeviceManagementApps.ReadWrite.All') } }
+        Get-IwaIntuneAccount -ClientId $customId | Should -Be 'admin@contoso.com'
+        Get-IwaIntuneAccount | Should -BeNullOrEmpty
+    }
+    It 'explains the usual app registration sign-in errors' {
+        Get-IwaSignInErrorMessage -Message 'AADSTS700016: Application not found' -CustomApp | Should -BeLike 'The app registration was not found*'
+        Get-IwaSignInErrorMessage -Message 'AADSTS7000218: client_assertion or client_secret' -CustomApp | Should -BeLike '*Allow public client flows*'
+        Get-IwaSignInErrorMessage -Message 'AADSTS50011: redirect URI' -CustomApp | Should -BeLike '*redirect URI is missing*'
+        Get-IwaSignInErrorMessage -Message 'AADSTS65001: consent' -CustomApp | Should -BeLike '*on your app registration*'
+        Get-IwaSignInErrorMessage -Message 'AADSTS65001: consent' | Should -BeLike '*"Microsoft Graph Command Line Tools"*'
+        Get-IwaSignInErrorMessage -Message 'boom' | Should -Be 'Sign-in failed: boom'
+    }
+}
+
+Describe 'Custom app registration review fixes (#30)' {
+    BeforeAll {
+        if (-not (Get-Command Get-MgContext -ErrorAction SilentlyContinue)) { function script:Get-MgContext { } }
+        $customId = '11111111-2222-3333-4444-555555555555'
+    }
+    It 'stores GUIDs in their plain form, whatever form was typed' {
+        $c = ConvertTo-IwaConnectionSetting -ClientId ' {11111111-2222-3333-4444-555555555555} ' -TenantId 'AAAAAAAABBBBCCCCDDDDEEEEEEEEEEEE'
+        $c.ClientId | Should -Be $customId
+        $c.TenantId | Should -Be 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        (ConvertTo-IwaConnectionSetting -ClientId $customId -TenantId ' contoso.onmicrosoft.com ').TenantId | Should -Be 'contoso.onmicrosoft.com'
+    }
+    It 'does not count a session of the same app in another tenant' {
+        Mock Get-MgContext { [pscustomobject]@{ Account = 'admin@contoso.com'; ClientId = $customId; TenantId = '00000000-0000-0000-0000-000000000001'; Scopes = @('DeviceManagementApps.ReadWrite.All') } }
+        Get-IwaIntuneAccount -ClientId $customId -TenantId '00000000-0000-0000-0000-000000000001' | Should -Be 'admin@contoso.com'
+        Get-IwaIntuneAccount -ClientId $customId -TenantId '00000000-0000-0000-0000-000000000002' | Should -BeNullOrEmpty
+        # A domain cannot be compared with the tenant GUID of the session: accepted.
+        Get-IwaIntuneAccount -ClientId $customId -TenantId 'contoso.onmicrosoft.com' | Should -Be 'admin@contoso.com'
+    }
+    It 'names both redirect URIs when one is missing' {
+        $text = Get-IwaSignInErrorMessage -Message 'AADSTS50011: redirect' -CustomApp
+        $text | Should -BeLike '*ms-appx-web://Microsoft.AAD.BrokerPlugin/*'
+        $text | Should -BeLike '*http://localhost*'
+    }
+}
