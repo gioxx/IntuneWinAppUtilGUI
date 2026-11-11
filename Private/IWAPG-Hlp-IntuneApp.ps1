@@ -62,6 +62,23 @@ function Get-IwaWin32AppDefault {
     $spec
 }
 
+function Read-IwaScriptFile {
+    <#
+    .SYNOPSIS
+    Reads a detection script so that re-encoding it as UTF-8 gives back the file's exact bytes (BOM included).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    # UTF8.GetString keeps a BOM as U+FEFF, so ConvertTo-IwaGraphRule sends the same bytes back.
+    $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+    if ([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($text)) -ne [Convert]::ToBase64String($bytes)) {
+        throw 'Save the detection script as UTF-8 (with or without BOM); UTF-16 and ANSI scripts are not supported here.'
+    }
+    $text
+}
+
 function New-IwaDetectionRule {
     <#
     .SYNOPSIS

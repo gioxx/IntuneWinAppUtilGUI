@@ -176,7 +176,9 @@ function Publish-IwaWin32AppContent {
         [System.Collections.IDictionary]$AppBody,
         [int]$ChunkSizeBytes = 6MB,
         [int]$SasRenewSeconds = 420,
-        [int]$PollIntervalSeconds = 2
+        [int]$PollIntervalSeconds = 2,
+        [int]$ActivationAttempts = 7,
+        [int]$ActivationRetrySeconds = 30
     )
 
     $appUri = "$script:IwaGraphAppsUri/$AppId"
@@ -231,6 +233,10 @@ function Publish-IwaWin32AppContent {
     if ($AppBody) { foreach ($key in $AppBody.Keys) { $patch[$key] = $AppBody[$key] } }
     $patch['@odata.type'] = '#microsoft.graph.win32LobApp'
     $patch['committedContentVersion'] = $version.id
-    Invoke-IwaGraph -Method PATCH -Uri $appUri -Body $patch | Out-Null
+    # Intune can reject the activation for a few minutes after a large commit (Microsoft's sample waits 3 minutes), so retry.
+    for ($attempt = 1; ; $attempt++) {
+        try { Invoke-IwaGraph -Method PATCH -Uri $appUri -Body $patch | Out-Null; break }
+        catch { if ($attempt -ge $ActivationAttempts) { throw }; Start-Sleep -Seconds $ActivationRetrySeconds }
+    }
     [string]$version.id
 }
