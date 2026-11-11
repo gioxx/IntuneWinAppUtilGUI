@@ -3,6 +3,8 @@
 
 $script:IwaGraphAppsUri = 'https://graph.microsoft.com/beta/deviceAppManagement/mobileApps'
 $script:IwaGraphScope = 'DeviceManagementApps.ReadWrite.All'
+# Public client id of Microsoft's "Microsoft Graph Command Line Tools", used by Connect-MgGraph when no -ClientId is given.
+$script:IwaGraphCliClientId = '14d82eec-204b-4c2f-b7e8-296a70dab67e'
 
 function Test-IwaGraphModule {
     [bool](Get-Module -ListAvailable -Name 'Microsoft.Graph.Authentication')
@@ -12,20 +14,69 @@ function Install-IwaGraphModule {
     Install-Module -Name 'Microsoft.Graph.Authentication' -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
 }
 
+function Test-IwaConnectionSetting {
+    <#
+    .SYNOPSIS
+    Checks a custom app registration: returns an error message, or nothing when the values can be used.
+    Both empty means Microsoft's own app.
+    #>
+    [CmdletBinding()]
+    param([string]$ClientId, [string]$TenantId)
+
+    $ClientId = "$ClientId".Trim(); $TenantId = "$TenantId".Trim()
+    if (-not $ClientId -and -not $TenantId) { return }
+    if (-not $ClientId -or -not $TenantId) { return 'Fill in both Client ID and Tenant ID, or leave both empty to use Microsoft''s app.' }
+    $guid = [guid]::Empty
+    if (-not [guid]::TryParse($ClientId, [ref]$guid)) { return 'The Client ID is the app registration''s Application (client) ID, a GUID like 00000000-0000-0000-0000-000000000000.' }
+    if (-not [guid]::TryParse($TenantId, [ref]$guid) -and $TenantId -notmatch '^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$') {
+        return 'The Tenant ID is the Directory (tenant) ID, a GUID, or the tenant domain like contoso.onmicrosoft.com.'
+    }
+}
+
 function Get-IwaIntuneAccount {
     <#
     .SYNOPSIS
-    Returns the signed-in account if the current Graph session has the Intune apps scope.
+    Returns the signed-in account if the current Graph session has the Intune apps scope and uses the
+    expected app: -ClientId (a custom app registration), or Microsoft's app when it is empty.
     #>
+    [CmdletBinding()]
+    param([string]$ClientId)
+
     if (-not (Get-Command Get-MgContext -ErrorAction SilentlyContinue)) { return $null }
     $context = Get-MgContext
-    if ($context -and ($context.Scopes -contains $script:IwaGraphScope)) { [string]$context.Account } else { $null }
+    if (-not $context -or -not ($context.Scopes -contains $script:IwaGraphScope)) { return $null }
+    # A session opened with the other app does not count: the next sign-in must use the configured one.
+    $expected = if ($ClientId) { $ClientId } else { $script:IwaGraphCliClientId }
+    if ($context.ClientId -and [string]$context.ClientId -ne $expected) { return $null }
+    [string]$context.Account
 }
 
 function Connect-IwaIntune {
+    [CmdletBinding()]
+    param([string]$ClientId, [string]$TenantId)
+
     Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
-    Connect-MgGraph -Scopes $script:IwaGraphScope -NoWelcome -ErrorAction Stop
-    Get-IwaIntuneAccount
+    $connect = @{ Scopes = $script:IwaGraphScope; NoWelcome = $true; ErrorAction = 'Stop' }
+    if ($ClientId) { $connect.ClientId = $ClientId; $connect.TenantId = $TenantId }
+    Connect-MgGraph @connect
+    Get-IwaIntuneAccount -ClientId $ClientId
+}
+
+function Get-IwaSignInErrorMessage {
+    <#
+    .SYNOPSIS
+    Turns a sign-in failure into what to do about it.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Message, [switch]$CustomApp)
+
+    $app = if ($CustomApp) { 'your app registration' } else { '"Microsoft Graph Command Line Tools"' }
+    if ($Message -match 'AADSTS700016') { return 'The app registration was not found in that tenant. Check the Client ID and the Tenant ID in Connection settings.' }
+    if ($Message -match 'AADSTS7000218') { return 'The app registration does not allow public client flows. In Entra ID, open it, then Authentication, and set "Allow public client flows" to Yes.' }
+    if ($Message -match 'AADSTS50011') { return 'The redirect URI is missing. In Entra ID, open the app registration, then Authentication, add the "Mobile and desktop applications" platform with the redirect URI http://localhost.' }
+    if ($Message -match 'AADSTS65001|AADSTS90094|consent') { return "Admin consent is needed for DeviceManagementApps.ReadWrite.All on $app. Ask a tenant administrator to grant it, then sign in again." }
+    if ($Message -match 'window handle') { return 'Sign-in could not open the Windows account prompt. Start the GUI from a PowerShell console window (Windows Terminal or the PowerShell console) and try again.' }
+    "Sign-in failed: $Message"
 }
 
 function Disconnect-IwaIntune {
