@@ -19,19 +19,19 @@ jobs:
       matrix:
         shell: [pwsh, powershell]
     name: test (${{ matrix.shell }})
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Install Pester
-        shell: ${{ matrix.shell }}
         run: Install-Module -Name Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
 
       - name: Validate module manifest
-        shell: ${{ matrix.shell }}
         run: Test-ModuleManifest -Path ./IntuneWinAppUtilGUI.psd1
 
       - name: Run tests
-        shell: ${{ matrix.shell }}
         run: Invoke-Pester -Path ./Tests -CI
