@@ -15,7 +15,7 @@ For additional project documentation and practical guidance, see the [IntuneWinA
 
 ## 🔧 Features
 
-- Built with **WPF** (XAML) and **PowerShell** — no external dependencies.
+- Built with **WPF** (XAML) and **PowerShell** — no external dependencies for packaging.
 - **Auto-download** of the latest version of `IntuneWinAppUtil.exe` from GitHub (optional).
 - Automatically stores tool path and reuses it on next launch (saved in a JSON file, check "[Configuration file](#%EF%B8%8F-configuration-file)").
 - Command-line helpers for checking executable versions and building Intune detection rules.
@@ -24,6 +24,7 @@ For additional project documentation and practical guidance, see the [IntuneWinA
 - Live path length indicator for Source/Output folders, with a final max-path check at Run time.
 - Remembers the last 10 output folders in a drop-down (cleared with **Clear recent**); a missing output folder is created at Run time.
 - **Copy path** button in the result panel copies the full path of the new `.intunewin` file.
+- **Publish to Intune** (preview): create a Win32 app, or update an existing one, through Microsoft Graph (see [Publish to Intune](#%EF%B8%8F-publish-to-intune-preview)).
 - Optional update check on startup with a non-blocking UI banner.
 - Sanitizes invalid characters from the output filename.
 - Uses Windows-version-safe UI labels instead of emoji glyphs in the WPF interface.
@@ -100,6 +101,25 @@ $status = Get-AppStatus -MinimumVersion "1.2.3.4"
 ```
 
 To detect the file regardless of its version, leave the call without `-MinimumVersion`. The script writes a concise status message to standard output, which is useful when reviewing Intune Management Extension logs.
+
+---
+
+## ☁️ Publish to Intune (preview)
+
+After packaging, **Upload to Intune...** in the result panel opens the *Publish to Intune* window. **Publish to Intune...** next to Run opens the same window for any `.intunewin`.
+
+- **New app** creates a Win32 app. Name, version, commands and the MSI detection rule are prefilled from the package.
+- **Update existing** searches an app by name, loads its settings and lets you change them, and optionally uploads the new package. With a new package, the settings and the new content are applied together after the upload is committed; if anything fails, the app in Intune is left as it was.
+- Detection rules: MSI product code, file or folder, registry, PowerShell script. Requirement rules set in the portal are kept as they are.
+- **Open in Intune** opens the app in the Intune admin center.
+
+Requirements:
+
+- The `Microsoft.Graph.Authentication` module. If it is missing, the window offers to install it for the current user (`Install-Module Microsoft.Graph.Authentication -Scope CurrentUser`).
+- An account that can manage Intune apps. The *Microsoft Graph Command Line Tools* app needs consent for `DeviceManagementApps.ReadWrite.All` in your tenant, and an administrator may have to grant it.
+- Start the GUI from a PowerShell console window (Windows Terminal or the PowerShell console): the Windows sign-in prompt needs it.
+
+Not handled yet, as the window itself says: assignments, icon, supersedence, dependencies, custom return codes (Intune defaults are used). Set them in the portal through **Open in Intune**.
 
 ---
 

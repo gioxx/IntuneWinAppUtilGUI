@@ -58,7 +58,7 @@ function Invoke-DownloadIntuneTool {
     .DESCRIPTION
     - Forces TLS 1.2 for GitHub downloads.
     - Creates (or ensures) the bin directory under $env:APPDATA\IntuneWinAppUtilGUI\bin.
-    - Removes any stale IntuneWinAppUtil.exe in the bin directory.
+    - Replaces the cached IntuneWinAppUtil.exe only after a successful download and extraction.
     - Downloads the repository master ZIP, extracts it to a unique temp folder,
       locates IntuneWinAppUtil.exe, and copies it into the bin directory.
     - Cleans up all temp files/folders in a finally block.
@@ -90,9 +90,9 @@ function Invoke-DownloadIntuneTool {
     $tempDir  = Join-Path $env:TEMP ("IntuneExtract-{0}" -f ([guid]::NewGuid()))
 
     try {
-        # Prepare target folder and clean stale exe
+        # Prepare target folder. The cached exe stays until the new one is extracted (Copy-Item -Force
+        # below replaces it): a failed download must not leave the user without a working tool.
         New-Item -ItemType Directory -Path $binDir -Force | Out-Null
-        if (Test-Path $exePath) { Remove-Item $exePath -Force -ErrorAction SilentlyContinue }
 
         # Download
         Invoke-WebRequest -Uri $RepoZipUrl -OutFile $tempZip -UseBasicParsing -ErrorAction Stop
@@ -386,6 +386,55 @@ function Get-IntuneWinAppUtilProgress {
         'Validat' { return [pscustomobject]@{ Percent = 3; Step = 'Validating parameters' } }
     }
     [pscustomobject]@{ Percent = 2; Step = 'Starting IntuneWinAppUtil' }
+}
+
+function Get-IntuneWinAppUtilLatestVersion {
+    <#
+    .SYNOPSIS
+    Returns the latest IntuneWinAppUtil.exe release and its FileVersion.
+    .DESCRIPTION
+    Reads Tools/IntuneWinAppUtilVersions.json, kept up to date by a weekly GitHub workflow of this
+    repository from the releases of microsoft/Microsoft-Win32-Content-Prep-Tool. Throws on failure.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Uri = 'https://raw.githubusercontent.com/gioxx/IntuneWinAppUtilGUI/main/Tools/IntuneWinAppUtilVersions.json',
+        [int]$TimeoutSec = 10
+    )
+
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+    $data = Invoke-RestMethod -Uri $Uri -TimeoutSec $TimeoutSec -UseBasicParsing -ErrorAction Stop
+    $latest = [string]$data.latest.fileVersion
+    $parsed = $null
+    if (-not [version]::TryParse($latest, [ref]$parsed)) { throw "The version list has no valid latest version ('$latest')." }
+    [pscustomobject]@{ Release = [string]$data.latest.release; FileVersion = $latest }
+}
+
+function Get-IntuneWinAppUtilReleaseZipUrl {
+    <#
+    .SYNOPSIS
+    ZIP URL of one tagged release of the Microsoft Win32 Content Prep Tool (for Invoke-DownloadIntuneTool -RepoZipUrl).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Release)
+
+    'https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/archive/refs/tags/{0}.zip' -f [uri]::EscapeDataString($Release)
+}
+
+function Test-IntuneWinAppUtilUpdateAvailable {
+    <#
+    .SYNOPSIS
+    True when the latest FileVersion is newer than the installed one, or nothing usable is installed.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$InstalledVersion,
+        [Parameter(Mandatory)][string]$LatestVersion
+    )
+
+    $installed = $null
+    if (-not $InstalledVersion -or -not [version]::TryParse($InstalledVersion.Trim(), [ref]$installed)) { return $true }
+    $installed -lt [version]$LatestVersion
 }
 
 function Initialize-IntuneWinAppUtil {
