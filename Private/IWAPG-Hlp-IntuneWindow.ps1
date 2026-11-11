@@ -112,7 +112,7 @@ function Initialize-IwaIntunePanel {
         Package = $null; DisplayVersion = $null; DisplayName = $null; Publisher = $null; AppId = $null; Account = $null; Activated = $false
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        ArchitectureProperty = ''; ArchitectureCheck = $true; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -140,11 +140,22 @@ function Initialize-IwaIntunePanel {
     }
     # shortcut: sign-in, install, search and app loading block the window while they run (seconds);
     # move them to the background task if large tenants make that noticeable.
+    # Clicks made while it waits are dropped (the panel ignores the mouse until they are drained),
+    # so a queued click cannot run a second sign-in, search or load.
+    $panelRoot = $win.FindName('IntunePanel')
     $withWait = {
         param([scriptblock]$Action)
+        if ($state.Waiting) { return }
+        $state.Waiting = $true
+        $panelRoot.IsHitTestVisible = $false
         $win.Cursor = [System.Windows.Input.Cursors]::Wait
         & $doEvents
-        try { & $Action } finally { $win.Cursor = $null }
+        try { & $Action } finally {
+            & $doEvents
+            $win.Cursor = $null
+            $panelRoot.IsHitTestVisible = $true
+            $state.Waiting = $false
+        }
     }
     $selectByTag = {
         param($Combo, $Tag)
@@ -196,6 +207,7 @@ function Initialize-IwaIntunePanel {
             MaxRunTimeInMinutes   = $ui.MaxRunTimeInMinutes.Text.Trim()
             ArchitectureProperty  = $state.ArchitectureProperty
             ArchitectureCheck     = $state.ArchitectureCheck
+            KeepIntuneRules       = $state.KeepIntuneRules
             Architectures         = $arch
             MinimumWindowsRelease = [string]$ui.MinimumWindowsRelease.SelectedItem.Tag
             Rules                 = @($state.Rules)
@@ -230,6 +242,7 @@ function Initialize-IwaIntunePanel {
     $setForm = {
         param($Spec)
         $state.Loading = $true
+        $state.KeepIntuneRules = $false
         try {
             $ui.DisplayName.Text = [string]$Spec.DisplayName
             $ui.Publisher.Text = [string]$Spec.Publisher
@@ -369,9 +382,17 @@ function Initialize-IwaIntunePanel {
         if ($task.State.Error) {
             Write-IwaDebugLog "Publish to Intune failed: $($task.State.Error)"
             $message = "Publishing failed: $($task.State.Error)"
-            if ($task.IsNew -and $state.LastUpload -and $task.State.AppId) {
+            if ($task.IsNew -and $task.State.AppId) {
+                # The app exists now: further uploads go to it, not to a second new app.
+                $state.KeepAppId = $true
+                $ui.ModeUpdate.IsChecked = $true
+                $state.KeepAppId = $false
+                $ui.UploadContent.IsChecked = [bool]$state.LastUpload
                 $message += "`nThe app was created in Intune without content. Select Retry upload to send the package to the same app."
-                $ui.RetryUploadButton.Visibility = $visible
+                if ($state.LastUpload) { $ui.RetryUploadButton.Visibility = $visible }
+            } elseif ($task.IsNew -and $task.State.Step -eq 'Creating the app in Intune') {
+                # The request may have reached Intune even if its answer did not come back.
+                $message += "`nIf the connection dropped, the app may have been created anyway: search for it in Update existing before you upload again."
             } else {
                 $message += "`nNothing was changed in Intune: settings and content are as before. Select Upload to try again."
             }
@@ -486,7 +507,10 @@ function Initialize-IwaIntunePanel {
         $ui.OpenInIntune.IsEnabled = $true
         $ui.RetryUploadButton.Visibility = $collapsed
         & $setForm (ConvertFrom-IwaGraphApp -App $state.LoadedApp)
+        # Until the rules are changed here, the update leaves them as they are in Intune.
+        $state.KeepIntuneRules = $true
         & $applyPackageVersion
+        & $validate
         & $showStatus 'success' ('Loaded "{0}". Change what you need, then select Upload.' -f $state.LoadedApp.displayName)
     })
 
@@ -539,6 +563,7 @@ function Initialize-IwaIntunePanel {
                 }
             }
             [void]$state.Rules.Add((New-IwaDetectionRule @ruleArgs))
+            $state.KeepIntuneRules = $false
             $ui.RuleErrorText.Visibility = $collapsed
             & $refreshRules
         } catch {
@@ -548,7 +573,7 @@ function Initialize-IwaIntunePanel {
     })
     $ui.RemoveRuleButton.Add_Click({
         $index = $ui.RulesList.SelectedIndex
-        if ($index -ge 0) { $state.Rules.RemoveAt($index); & $refreshRules }
+        if ($index -ge 0) { $state.Rules.RemoveAt($index); $state.KeepIntuneRules = $false; & $refreshRules }
     })
 
     foreach ($name in @('DisplayName', 'Publisher', 'DisplayVersion', 'Description', 'InstallCommandLine', 'UninstallCommandLine', 'MaxRunTimeInMinutes', 'PackagePath')) {

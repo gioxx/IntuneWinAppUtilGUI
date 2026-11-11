@@ -135,6 +135,14 @@ Describe 'ConvertTo-IwaGraphRule' {
 }
 
 Describe 'New-IwaWin32AppBody' {
+    It 'maps the MSI execution context to the package type' {
+        foreach ($case in @(@('System', 'perMachine'), @('User', 'perUser'), @('Any', 'dualPurpose'))) {
+            $package = [pscustomobject]@{ FileName = 'IntunePackage.intunewin'; SetupFile = 'contoso.msi'; MsiInfo = [pscustomobject]@{
+                ProductCode = '{11111111-2222-3333-4444-555555555555}'; ProductVersion = '1.0'; UpgradeCode = ''; Publisher = 'Contoso Ltd'
+                RequiresReboot = $false; ExecutionContext = $case[0] } }
+            (New-IwaWin32AppBody -Spec (New-ValidSpec) -Package $package).msiInformation.packageType | Should -Be $case[1] -Because $case[0]
+        }
+    }
     It 'builds a create body with defaults and package data' {
         $body = New-IwaWin32AppBody -Spec (New-ValidSpec) -Package $msiPackage
         $body.'@odata.type' | Should -Be '#microsoft.graph.win32LobApp'
@@ -252,6 +260,21 @@ Describe 'ConvertFrom-IwaGraphApp' {
         $spec.Architectures = @()
         @(Test-IwaWin32AppSpec -Spec $spec | Where-Object Field -eq 'Architectures') | Should -Not -BeNullOrEmpty
     }
+    It 'reads file and registry rules back as they were sent' {
+        $rules = @(
+            (New-IwaDetectionRule -Type File -Path 'C:\Program Files\Contoso' -FileOrFolderName 'app.exe' -Operation version -Value '1.2.3.4' -Check32BitOn64System),
+            (New-IwaDetectionRule -Type File -Path 'C:\Program Files\Contoso' -FileOrFolderName 'app.exe'),
+            (New-IwaDetectionRule -Type Registry -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Contoso' -ValueName 'Version' -Operation string -Value '2.0'),
+            (New-IwaDetectionRule -Type Registry -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Contoso')
+        )
+        foreach ($rule in $rules) {
+            # Through JSON, as Graph returns it.
+            $graph = ConvertTo-IwaGraphRule -Rule $rule | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+            $back = ConvertFrom-IwaGraphRule -GraphRule $graph
+            $back.Type | Should -Be $rule.Type
+            foreach ($key in @($rule.Keys)) { "$($back[$key])" | Should -Be "$($rule[$key])" -Because "$($rule.Type).$key" }
+        }
+    }
     It 'keeps a script rule without content as raw' {
         $noContent = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppPowerShellScriptRule'; ruleType = 'detection'; scriptContent = $null }
         (ConvertFrom-IwaGraphRule -GraphRule $noContent).Type | Should -Be 'Raw'
@@ -301,8 +324,17 @@ Describe 'Test-IwaWin32AppSpec' {
             $spec.Rules += @{ Type = 'Raw'; Graph = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppPowerShellScriptRule'; ruleType = $ruleType; scriptContent = $null } }
             $found = @(Test-IwaWin32AppSpec -Spec $spec | Where-Object { $_.Field -eq 'Rules' })
             $found.Count | Should -Be 1 -Because $ruleType
-            $found[0].Message | Should -Be 'A script rule of this app came back from Intune without its content. Edit this app''s script rules in the portal ("Open in Intune").'
+            $found[0].Message | Should -BeLike 'A script rule of this app came back from Intune without its content*'
         }
+    }
+    It 'lets an update keep such rules as they are in Intune' {
+        $spec = New-ValidSpec
+        $spec.Rules += @{ Type = 'Raw'; Graph = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppPowerShellScriptRule'; ruleType = 'detection'; scriptContent = $null } }
+        $spec.KeepIntuneRules = $true
+        @(Test-IwaWin32AppSpec -Spec $spec | Where-Object { $_.Field -eq 'Rules' }) | Should -BeNullOrEmpty
+        (New-IwaWin32AppBody -Spec $spec -ForUpdate).Contains('rules') | Should -BeFalse
+        # A new app always sends its rules.
+        (New-IwaWin32AppBody -Spec $spec).Contains('rules') | Should -BeTrue
     }
     It 'needs a package when the content is uploaded' {
         @(Test-IwaWin32AppSpec -Spec (New-ValidSpec) -UploadContent $true | ForEach-Object { $_.Field }) | Should -Contain 'PackagePath'

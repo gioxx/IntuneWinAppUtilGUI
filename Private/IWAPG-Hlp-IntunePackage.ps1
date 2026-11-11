@@ -24,9 +24,11 @@ function Read-IwaIntuneWinPackage {
             throw "'$Path' is not a valid .intunewin package: Detection.xml or the encrypted content is missing."
         }
         $reader = New-Object System.IO.StreamReader($detection.Open())
-        try { [xml]$xml = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        try { [xml]$xml = $text } catch { throw "'$Path' is not a valid .intunewin package: its Detection.xml cannot be read." }
         $info = $xml.ApplicationInfo
         $enc = $info.EncryptionInfo
+        if (-not $info -or -not $enc) { throw "'$Path' is not a valid .intunewin package: its Detection.xml has no application or encryption data." }
 
         $msi = $null
         if ($info.MsiInfo -and $info.MsiInfo.MsiProductCode) {
