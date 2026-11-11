@@ -407,7 +407,10 @@ function Get-IntuneWinAppUtilLatestVersion {
     $latest = [string]$data.latest.fileVersion
     $parsed = $null
     if (-not [version]::TryParse($latest, [ref]$parsed)) { throw "The version list has no valid latest version ('$latest')." }
-    [pscustomobject]@{ Release = [string]$data.latest.release; FileVersion = $latest }
+    # The release tag builds the download URL: without it the update could not be downloaded.
+    $release = ([string]$data.latest.release).Trim()
+    if (-not $release) { throw "The version list has no release for the latest version ('$latest')." }
+    [pscustomobject]@{ Release = $release; FileVersion = $latest }
 }
 
 function Get-IntuneWinAppUtilReleaseZipUrl {

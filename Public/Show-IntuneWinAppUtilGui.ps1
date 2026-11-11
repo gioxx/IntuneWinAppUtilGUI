@@ -589,45 +589,88 @@ function Show-IntuneWinAppUtilGUI {
         }
     })
 
+    # Dialog overlay: in-window replacement for message boxes. Kind sets the icon (Info, Success, Question, Error).
+    # With PrimaryText the dialog asks a question: OnPrimary runs (with Argument) only when the user confirms.
+    $DialogOverlay   = $window.FindName("DialogOverlay")
+    $DialogIcon      = $window.FindName("DialogIcon")
+    $DialogIconText  = $window.FindName("DialogIconText")
+    $DialogTitle     = $window.FindName("DialogTitle")
+    $DialogMessage   = $window.FindName("DialogMessage")
+    $DialogDetails   = $window.FindName("DialogDetails")
+    $DialogPrimary   = $window.FindName("DialogPrimary")
+    $DialogSecondary = $window.FindName("DialogSecondary")
+    $dialogState = [pscustomobject]@{ OnPrimary = $null; Argument = $null }
+    $dialogKinds = @{
+        Info     = @('i', '#0B6BD3')
+        Success  = @([string][char]0x2713, '#16A34A')
+        Question = @('?', '#0B6BD3')
+        Error    = @('!', '#DC2626')
+    }
+    $showDialog = {
+        param([string]$Kind, [string]$Title, [string]$Message, [string]$Details, [string]$PrimaryText, [scriptblock]$OnPrimary, $Argument)
+        $icon = $dialogKinds[$Kind]
+        $DialogIconText.Text = $icon[0]
+        $DialogIcon.Background = (New-Object System.Windows.Media.BrushConverter).ConvertFromString($icon[1])
+        $DialogTitle.Text = $Title
+        $DialogMessage.Text = $Message
+        $DialogDetails.Text = $Details
+        $DialogDetails.Visibility = if ($Details) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        $dialogState.OnPrimary = $OnPrimary
+        $dialogState.Argument = $Argument
+        $DialogOverlay.Visibility = [System.Windows.Visibility]::Visible
+        if ($PrimaryText) {
+            $DialogPrimary.Content = $PrimaryText
+            $DialogPrimary.Visibility = [System.Windows.Visibility]::Visible
+            $DialogSecondary.Content = 'Cancel'
+            $null = $DialogPrimary.Focus()
+        } else {
+            $DialogPrimary.Visibility = [System.Windows.Visibility]::Collapsed
+            $DialogSecondary.Content = 'Close'
+            $null = $DialogSecondary.Focus()
+        }
+        if ($Kind -eq 'Error') { try { [System.Media.SystemSounds]::Hand.Play() } catch { } }
+    }
+    $hideDialog = {
+        $DialogOverlay.Visibility = [System.Windows.Visibility]::Collapsed
+        $dialogState.OnPrimary = $null
+        $dialogState.Argument = $null
+    }
+    # Hide first: the action may open another dialog (e.g. the download result).
+    $confirmDialog = {
+        $action = $dialogState.OnPrimary
+        $argument = $dialogState.Argument
+        & $hideDialog
+        if ($action) { & $action $argument }
+    }
+    $DialogPrimary.Add_Click({ & $confirmDialog })
+    $DialogSecondary.Add_Click({ & $hideDialog })
+
     # Downloads IntuneWinAppUtil.exe into the local bin folder and selects it: from the given release ZIP,
     # or from the default (master branch) when none is given.
     $downloadToolNow = {
         param([string]$ZipUrl)
+        $window.Cursor = [System.Windows.Input.Cursors]::Wait
+        & $pumpUi
         try {
             $downloadArgs = @{}
             if ($ZipUrl) { $downloadArgs.RepoZipUrl = $ZipUrl }
             $newPath = Invoke-DownloadIntuneTool @downloadArgs
             $ToolPathBox.Text = $newPath
             Show-ToolVersion -Path $newPath -Target $ToolVersionText
-
-            [System.Windows.MessageBox]::Show(
-                $window,
-                "IntuneWinAppUtil.exe has been refreshed.`n`nPath:`n$newPath",
-                "Download complete",
-                [System.Windows.MessageBoxButton]::OK,
-                [System.Windows.MessageBoxImage]::Information
-            )
+            $window.Cursor = $null
+            & $showDialog -Kind Success -Title 'Download complete' -Message 'IntuneWinAppUtil.exe has been downloaded and selected.' -Details $newPath
         } catch {
-            [System.Windows.MessageBox]::Show(
-                $window,
-                "Download failed:`n$($_.Exception.Message)",
-                "Error",
-                [System.Windows.MessageBoxButton]::OK,
-                [System.Windows.MessageBoxImage]::Error
-            )
+            $window.Cursor = $null
+            & $showDialog -Kind Error -Title 'Download failed' -Message $_.Exception.Message
         }
     }
 
     # Force download the IntuneWinAppUtil.exe tool
     $DownloadTool.Add_Click({
-        $confirm = [System.Windows.MessageBox]::Show(
-            $window,
-            "Download the latest IntuneWinAppUtil.exe now?`n`nIf a cached copy already exists in the local bin folder, it will be replaced.",
-            "Refresh IntuneWinAppUtil.exe",
-            [System.Windows.MessageBoxButton]::YesNo,
-            [System.Windows.MessageBoxImage]::Question
-        )
-        if ($confirm -eq [System.Windows.MessageBoxResult]::Yes) { & $downloadToolNow }
+        & $showDialog -Kind Question -Title 'Refresh IntuneWinAppUtil.exe' `
+            -Message 'Download the latest IntuneWinAppUtil.exe now?' `
+            -Details 'If a cached copy already exists in the local bin folder, it will be replaced.' `
+            -PrimaryText 'Download' -OnPrimary $downloadToolNow
     })
 
     # Check for updates: compares the selected IntuneWinAppUtil.exe with the latest release
@@ -641,25 +684,22 @@ function Show-IntuneWinAppUtilGUI {
             $latest = Get-IntuneWinAppUtilLatestVersion
         } catch {
             $window.Cursor = $null
-            [System.Windows.MessageBox]::Show($window, "Unable to check for updates:`n$($_.Exception.Message)", "Check for updates",
-                [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+            & $showDialog -Kind Error -Title 'Check for updates' -Message "Unable to check for updates: $($_.Exception.Message)"
             return
         }
         $window.Cursor = $null
 
-        $latestText = "$($latest.FileVersion) (release $($latest.Release))"
+        $latestText = "Latest: $($latest.FileVersion) (release $($latest.Release))"
         if (-not (Test-IntuneWinAppUtilUpdateAvailable -InstalledVersion $installed -LatestVersion $latest.FileVersion)) {
-            [System.Windows.MessageBox]::Show($window, "IntuneWinAppUtil.exe is up to date.`n`nInstalled: $installed`nLatest: $latestText", "Check for updates",
-                [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+            & $showDialog -Kind Success -Title 'IntuneWinAppUtil.exe is up to date' -Message "Installed: $installed`n$latestText"
             return
         }
 
         $current = if ($installed) { "Installed: $installed" } else { 'No IntuneWinAppUtil.exe selected, or its version cannot be read.' }
-        $answer = [System.Windows.MessageBox]::Show($window,
-            "A newer IntuneWinAppUtil.exe is available.`n`n$current`nLatest: $latestText`n`nDownload it now? It is saved in the local bin folder and selected here.",
-            "Check for updates", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
         # The release just advertised, not the master branch: the two can contain different binaries.
-        if ($answer -eq [System.Windows.MessageBoxResult]::Yes) { & $downloadToolNow (Get-IntuneWinAppUtilReleaseZipUrl -Release $latest.Release) }
+        & $showDialog -Kind Info -Title 'Update available' -Message "$current`n$latestText" `
+            -Details 'The new version is saved in the local bin folder and selected here.' `
+            -PrimaryText 'Download' -OnPrimary $downloadToolNow -Argument (Get-IntuneWinAppUtilReleaseZipUrl -Release $latest.Release)
     })
 
     # When user types/pastes the tool path manually, show version if valid
@@ -1010,6 +1050,16 @@ function Show-IntuneWinAppUtilGUI {
             $e.Handled = $true
             return
         }
+        if ($DialogOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
+            # Dialog open: Enter confirms (or closes a message), Esc cancels. A focused button handles its own Enter.
+            if ($e.Key -eq 'Tab') { return }
+            switch ($e.Key) {
+                'Return' { if ($DialogPrimary.Visibility -eq [System.Windows.Visibility]::Visible) { & $confirmDialog } else { & $hideDialog } }
+                'Escape' { & $hideDialog }
+            }
+            $e.Handled = $true
+            return
+        }
         if ($HelpOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
             # Help open: Esc and Enter close it; nothing reaches the form behind it.
             if ($e.Key -eq 'Tab') { return }
@@ -1019,16 +1069,9 @@ function Show-IntuneWinAppUtilGUI {
         }
         switch ($e.Key) {
             'Escape' {
-                $confirmExit = [System.Windows.MessageBox]::Show(
-                    $window,
-                    "Close IntuneWinAppUtil GUI?`n`nCurrent field values will not be kept, except the saved IntuneWinAppUtil path.",
-                    "Close IntuneWinAppUtil GUI",
-                    [System.Windows.MessageBoxButton]::YesNo,
-                    [System.Windows.MessageBoxImage]::Question
-                )
-                if ($confirmExit -eq [System.Windows.MessageBoxResult]::Yes) {
-                    $window.Close()
-                }
+                & $showDialog -Kind Question -Title 'Close IntuneWinAppUtil GUI?' `
+                    -Message 'Current field values will not be kept, except the saved IntuneWinAppUtil path.' `
+                    -PrimaryText 'Close' -OnPrimary { $window.Close() }
             }
             'Return' {
                 $RunButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))

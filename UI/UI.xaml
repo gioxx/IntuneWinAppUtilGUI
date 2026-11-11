@@ -684,5 +684,55 @@
             </StackPanel>
         </Border>
     </Border>
+
+    <!-- Dialog overlay: in-window replacement for message boxes (update check, tool download, exit confirmation).
+         Icon, texts and buttons are set by $showDialog in Show-IntuneWinAppUtilGui.ps1. -->
+    <Border Name="DialogOverlay"
+            KeyboardNavigation.TabNavigation="Cycle"
+            Margin="14"
+            CornerRadius="10"
+            Background="#B30F172A"
+            Visibility="Collapsed">
+        <Border Width="500"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="22,20"
+                CornerRadius="10"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.30" Color="#0F172A"/>
+            </Border.Effect>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Border Name="DialogIcon" Width="26" Height="26" CornerRadius="13" Background="{StaticResource AccentBrush}" VerticalAlignment="Center">
+                        <TextBlock Name="DialogIconText" Text="i" Foreground="#FFFFFF" FontSize="15" FontWeight="Bold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Name="DialogTitle"
+                               Margin="10,0,0,0"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource InkBrush}"/>
+                </StackPanel>
+                <TextBlock Name="DialogMessage"
+                           Margin="0,14,0,0"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource InkBrush}"/>
+                <TextBlock Name="DialogDetails"
+                           Margin="0,10,0,0"
+                           TextWrapping="Wrap"
+                           FontSize="11"
+                           Foreground="{StaticResource MutedBrush}"
+                           Visibility="Collapsed"/>
+                <StackPanel Margin="0,18,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Name="DialogPrimary" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
+                    <Button Name="DialogSecondary" Content="Cancel" Width="104"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Border>
     </Grid>
 </Window>
