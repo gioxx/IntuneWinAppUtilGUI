@@ -46,6 +46,10 @@ Describe 'Get-IwaWin32AppDefault' {
         $spec.Rules[0].ProductCode | Should -Be '{11111111-2222-3333-4444-555555555555}'
     }
 
+    It 'keeps a supplied DisplayVersion over the MSI version' {
+        (Get-IwaWin32AppDefault -Package $msiPackage -DisplayVersion '2.1').DisplayVersion | Should -Be '2.1'
+    }
+
     It 'uses the name and publisher read from the source folder over the package values' {
         $spec = Get-IwaWin32AppDefault -Package $exePackage -DisplayVersion '26.06' -DisplayName 'Contoso Tool (x64)' -Publisher 'Contoso Ltd'
         $spec.DisplayName | Should -Be 'Contoso Tool (x64)'
@@ -71,6 +75,9 @@ Describe 'New-IwaDetectionRule' {
     }
     It 'rejects a product code that is not a GUID' {
         { New-IwaDetectionRule -Type MsiProductCode -ProductCode 'abc' } | Should -Throw '*{GUID}*'
+    }
+    It 'rejects a product code with the right length but not a GUID layout' {
+        { New-IwaDetectionRule -Type MsiProductCode -ProductCode '{------------------------------------}' } | Should -Throw '*{GUID}*'
     }
     It 'builds a file exists rule without a comparison' {
         $r = New-IwaDetectionRule -Type File -Path 'C:\Program Files\Contoso' -FileOrFolderName 'tool.exe'
@@ -182,6 +189,13 @@ Describe 'ConvertFrom-IwaGraphApp' {
         $spec = ConvertFrom-IwaGraphApp -App $portal
         $spec.ArchitectureProperty | Should -Be 'allowedArchitectures'
         $body = New-IwaWin32AppBody -Spec $spec -ForUpdate
+        $body.allowedArchitectures | Should -Be 'x64,arm64'
+        $body.applicableArchitectures | Should -Be 'none'
+    }
+    It 'uses allowedArchitectures when ARM64 is selected' {
+        $spec = New-ValidSpec
+        $spec.Architectures = @('x64', 'arm64')
+        $body = New-IwaWin32AppBody -Spec $spec
         $body.allowedArchitectures | Should -Be 'x64,arm64'
         $body.applicableArchitectures | Should -Be 'none'
     }
