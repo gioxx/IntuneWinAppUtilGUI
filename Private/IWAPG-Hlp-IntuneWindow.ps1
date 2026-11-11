@@ -99,6 +99,7 @@ function Initialize-IwaIntunePanel {
       $iwaOpenPackage   param($PackagePath, $DisplayVersion, $DisplayName, $Publisher): loads a package into the form
       $iwaUploadRunning $true while an upload runs
       $iwaStopUpload    stops a running upload without waiting for it
+      $iwaReleaseFinishedUpload  frees an upload that ended but was not collected yet
     #>
     param($IwaWindow, [string]$ModuleRoot)
 
@@ -591,6 +592,14 @@ function Initialize-IwaIntunePanel {
         & $loadPackage $PackagePath
     }
     $iwaUploadRunning = { [bool]($state.Task -and -not $state.Task.Handle.IsCompleted) }
+    # On close: an upload that ended after the last timer tick still holds its runspace.
+    $iwaReleaseFinishedUpload = {
+        if (-not $state.Task -or -not $state.Task.Handle.IsCompleted) { return }
+        $timer.Stop()
+        try { $null = $state.Task.PowerShell.EndInvoke($state.Task.Handle) } catch { }
+        $state.Task.PowerShell.Dispose()
+        $state.Task = $null
+    }
     # BeginStop: Stop() would block the UI thread until the current block upload ends.
     $iwaStopUpload = {
         if (-not $state.Task) { return }

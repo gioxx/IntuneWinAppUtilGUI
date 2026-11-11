@@ -1121,6 +1121,7 @@ function Show-IntuneWinAppUtilGUI {
     $window.Add_Closing({
         param($evtSender, $e)
         if ($runState.Busy) { $e.Cancel = $true; return }
+        & $iwaReleaseFinishedUpload
         if (& $iwaUploadRunning) {
             if (-not $runState.CloseConfirmed) { $e.Cancel = $true; & $confirmCloseDuringUpload; return }
             & $iwaStopUpload
