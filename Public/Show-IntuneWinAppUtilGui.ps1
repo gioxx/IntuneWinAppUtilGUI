@@ -84,8 +84,8 @@ function Show-IntuneWinAppUtilGUI {
         $null = $app.Resources.Add('IntuneGUI_HandlersRegistered', $true)
     }
 
-    # Parse XAML and get the main window
-    $xaml   = Get-Content $xamlPath -Raw
+    # Parse XAML (with the "Publish to Intune" tab injected) and get the main window
+    $xaml   = Get-IwaMainWindowXaml -ModuleRoot $moduleRoot
     $window = [Windows.Markup.XamlReader]::Parse($xaml)
 
     # Grab controls
@@ -119,7 +119,8 @@ function Show-IntuneWinAppUtilGUI {
 
     # Packaging runs on the UI thread; while it runs, the overlay blocks mouse input and the UI is kept
     # responsive by letting the dispatcher render between steps. Busy blocks re-entry (Enter), Esc and closing.
-    $runState = [pscustomobject]@{ Busy = $false }
+    # CloseConfirmed: the user already agreed to stop a running Intune upload and close.
+    $runState = [pscustomobject]@{ Busy = $false; CloseConfirmed = $false }
     # WPF "DoEvents": run a nested message loop until all pending work down to Background priority
     # (layout, rendering, input, UI Automation) has been processed.
     $pumpUi = {
@@ -199,10 +200,24 @@ function Show-IntuneWinAppUtilGUI {
     $ResultOpenFolder.Add_Click({ & $openResultFolder })
     $ResultCopyPath.Add_Click({ & $copyResultPath })
     $ResultClose.Add_Click({ & $hideResult })
-    # Publish to Intune: from the result panel (the package just built) or from the action row (any package).
+    # Tabs: Package and Publish to Intune. The Package tab sets the window size, so it is only hidden.
+    $TabPackage   = $window.FindName("TabPackage")
+    $TabIntune    = $window.FindName("TabIntune")
+    $PackagePanel = $window.FindName("PackagePanel")
+    $IntunePanel  = $window.FindName("IntunePanel")
+    . Initialize-IwaIntunePanel -IwaWindow $window -ModuleRoot $moduleRoot
+    $showTab = {
+        $intune = [bool]$TabIntune.IsChecked
+        $PackagePanel.Visibility = if ($intune) { [System.Windows.Visibility]::Hidden } else { [System.Windows.Visibility]::Visible }
+        $IntunePanel.Visibility = if ($intune) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        if ($intune) { & $iwaActivate }
+    }
+    $TabPackage.Add_Checked({ & $showTab })
+    $TabIntune.Add_Checked({ & $showTab })
+
+    # "Upload to Intune..." in the result panel: the Intune tab with the package just built.
     $ResultUploadIntune = $window.FindName("ResultUploadIntune")
-    $IntuneButton       = $window.FindName("IntuneButton")
-    $openIntuneWindow = {
+    $openInIntuneTab = {
         param([string]$PackagePath)
         if ($runState.Busy) { return }
         # Same name/version the main window uses for the file name (PSADT, then MSI), not the PSADT launcher's own version.
@@ -221,20 +236,14 @@ function Show-IntuneWinAppUtilGUI {
         }
         $appName = if ($appInfo) { [string]$appInfo.Name } else { '' }
         $appPublisher = if ($appInfo) { [string]$appInfo.Publisher } else { '' }
-        try {
-            Show-IwaIntuneWindow -Owner $window -ModuleRoot $moduleRoot -PackagePath $PackagePath -DisplayVersion $version -DisplayName $appName -Publisher $appPublisher
-        } catch {
-            Write-IwaDebugLog "Publish to Intune window failed: $($_.Exception.Message)"
-            [System.Windows.MessageBox]::Show($window, "Unable to open the Publish to Intune window:`n$($_.Exception.Message)", "Publish to Intune",
-                [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
-        }
+        $TabIntune.IsChecked = $true
+        & $iwaOpenPackage $PackagePath $version $appName $appPublisher
     }
     $ResultUploadIntune.Add_Click({
         $packagePath = $resultState.Path
         & $hideResult
-        & $openIntuneWindow $packagePath
+        & $openInIntuneTab $packagePath
     })
-    $IntuneButton.Add_Click({ & $openIntuneWindow $null })
     $HelpButton      = $window.FindName("HelpButton")
     $ClearButton     = $window.FindName("ClearButton")
     $ExitButton      = $window.FindName("ExitButton")
@@ -1060,6 +1069,13 @@ function Show-IntuneWinAppUtilGUI {
             $e.Handled = $true
             return
         }
+        if ($ui.DoneOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
+            # "App created/updated in Intune" open: Esc and Enter close it.
+            if ($e.Key -eq 'Tab') { return }
+            if ($e.Key -in 'Escape', 'Return') { $ui.DoneOverlay.Visibility = [System.Windows.Visibility]::Collapsed }
+            $e.Handled = $true
+            return
+        }
         if ($HelpOverlay.Visibility -eq [System.Windows.Visibility]::Visible) {
             # Help open: Esc and Enter close it; nothing reaches the form behind it.
             if ($e.Key -eq 'Tab') { return }
@@ -1069,20 +1085,47 @@ function Show-IntuneWinAppUtilGUI {
         }
         switch ($e.Key) {
             'Escape' {
+                if (& $iwaUploadRunning) { & $confirmCloseDuringUpload; break }
                 & $showDialog -Kind Question -Title 'Close IntuneWinAppUtil GUI?' `
                     -Message 'Current field values will not be kept, except the saved IntuneWinAppUtil path.' `
                     -PrimaryText 'Close' -OnPrimary { $window.Close() }
             }
             'Return' {
-                $RunButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+                # Only on the Package tab: Enter on the Intune tab must never start an upload or a packaging run.
+                if ($TabPackage.IsChecked) {
+                    $RunButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+                }
             }
         }
     })
+    # Ctrl+Tab switches tab. Preview: focused controls would otherwise use it for keyboard navigation.
+    $window.Add_PreviewKeyDown({
+        param($evtSender, $e)
+        if ($e.Key -ne 'Tab' -or -not ([System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control)) { return }
+        $overlayOpen = @($ResultOverlay, $DialogOverlay, $HelpOverlay, $ui.DoneOverlay) | Where-Object { $_.Visibility -eq [System.Windows.Visibility]::Visible }
+        if ($runState.Busy -or $overlayOpen) { return }
+        if ($TabPackage.IsChecked) { $TabIntune.IsChecked = $true } else { $TabPackage.IsChecked = $true }
+        $e.Handled = $true
+    })
+
+    # Closing while an Intune upload runs: ask first, then stop the upload without waiting for it.
+    $confirmCloseDuringUpload = {
+        $TabIntune.IsChecked = $true
+        & $showDialog -Kind Question -Title 'An upload is still running' `
+            -Message 'Stop it and close IntuneWinAppUtil GUI?' `
+            -Details 'If the app was just created, it stays in Intune without content.' `
+            -PrimaryText 'Stop and close' -OnPrimary { $runState.CloseConfirmed = $true; $window.Close() }
+    }
 
     # Do not close while packaging: the tool and the staging folder would be left behind.
     $window.Add_Closing({
         param($evtSender, $e)
-        if ($runState.Busy) { $e.Cancel = $true }
+        if ($runState.Busy) { $e.Cancel = $true; return }
+        & $iwaReleaseFinishedUpload
+        if (& $iwaUploadRunning) {
+            if (-not $runState.CloseConfirmed) { $e.Cancel = $true; & $confirmCloseDuringUpload; return }
+            & $iwaStopUpload
+        }
     })
 
     # When the window is closed, save ToolPath, UpdateCheckEnabled and the recent output folders to config.json

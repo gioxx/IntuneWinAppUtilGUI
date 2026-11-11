@@ -1,5 +1,5 @@
 # IWAPG-Hlp-IntuneWindow.ps1
-# "Publish to Intune" window: create or update a Win32 app from a .intunewin package.
+# "Publish to Intune" tab of the main window: create or update a Win32 app from a .intunewin package.
 
 $script:IwaV1Limitations = 'Not handled here yet: assignments, icon, supersedence, dependencies, custom return codes (Intune defaults are used). Use "Open in Intune" to set them in the portal.'
 
@@ -17,23 +17,23 @@ function Get-IwaIntuneWindowControlName {
         'ScriptRulePanel', 'RuleScriptPath', 'BrowseScript', 'RuleScriptRunAs32', 'RuleScriptSignature',
         'AddRuleButton', 'RuleErrorText',
         'ValidationText', 'StatusText', 'ProgressPanel', 'ProgressText', 'UploadProgress',
-        'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'CloseButton',
-        'DoneOverlay', 'DoneTitle', 'DoneAppName', 'DoneDetail', 'DoneNote', 'DoneOpenIntune', 'DoneBack', 'DoneCloseWindow'
+        'OpenInIntune', 'RetryUploadButton', 'UploadButton',
+        'DoneOverlay', 'DoneTitle', 'DoneAppName', 'DoneDetail', 'DoneNote', 'DoneOpenIntune', 'DoneBack'
     )
 }
 
-function Get-IwaIntuneWindowXaml {
+function Get-IwaMainWindowXaml {
     <#
     .SYNOPSIS
-    Returns IntuneWindow.xaml with the styles of UI.xaml injected, so both windows share one style source.
+    Returns UI.xaml with the "Publish to Intune" tab (IntunePanel.xaml) injected, so both share one name scope and one set of styles.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ModuleRoot)
 
+    $marker = '<!-- INTUNE_PANEL -->'
     $main = Get-Content -LiteralPath (Join-Path $ModuleRoot 'UI\UI.xaml') -Raw
-    $resources = [regex]::Match($main, '(?s)<Window\.Resources>.*?</Window\.Resources>')
-    if (-not $resources.Success) { throw 'Window.Resources not found in UI.xaml.' }
-    (Get-Content -LiteralPath (Join-Path $ModuleRoot 'UI\IntuneWindow.xaml') -Raw).Replace('<!-- SHARED_RESOURCES -->', $resources.Value)
+    if (-not $main.Contains($marker)) { throw "$marker not found in UI.xaml." }
+    $main.Replace($marker, (Get-Content -LiteralPath (Join-Path $ModuleRoot 'UI\IntunePanel.xaml') -Raw))
 }
 
 # Runs in a second runspace of the same process, so it shares the Connect-MgGraph sign-in
@@ -87,33 +87,32 @@ $script:IwaIntuneTaskScript = {
     }
 }
 
-function Show-IwaIntuneWindow {
+function Initialize-IwaIntunePanel {
     <#
     .SYNOPSIS
-    Opens the "Publish to Intune" window (modal) for a new or an existing Win32 app.
+    Wires the "Publish to Intune" tab of the main window (parsed from Get-IwaMainWindowXaml).
+    .DESCRIPTION
+    Dot-source it from Show-IntuneWinAppUtilGUI (". Initialize-IwaIntunePanel ..."): its variables then live in the
+    main window's scope, which stays alive while the window is open, so the handlers below keep reaching them.
+    The main window uses:
+      $iwaActivate      first time the tab is shown: checks the Graph module and the sign-in
+      $iwaOpenPackage   param($PackagePath, $DisplayVersion, $DisplayName, $Publisher): loads a package into the form
+      $iwaUploadRunning $true while an upload runs
+      $iwaStopUpload    stops a running upload without waiting for it
+      $iwaReleaseFinishedUpload  frees an upload that ended but was not collected yet
     #>
-    [CmdletBinding()]
-    param(
-        $Owner,
-        [Parameter(Mandatory)][string]$ModuleRoot,
-        [string]$PackagePath,
-        [string]$DisplayVersion,
-        [string]$DisplayName,
-        [string]$Publisher
-    )
+    param($IwaWindow, [string]$ModuleRoot)
 
-    $win = [Windows.Markup.XamlReader]::Parse((Get-IwaIntuneWindowXaml -ModuleRoot $ModuleRoot))
-    if ($Owner) { $win.Owner = $Owner }
+    $win = $IwaWindow
     $ui = @{}
     foreach ($name in Get-IwaIntuneWindowControlName) { $ui[$name] = $win.FindName($name) }
 
-    # Handlers run in this scope while ShowDialog() is open, but an assignment inside a handler
-    # creates a local variable: every value a handler changes lives in $state.
+    # An assignment inside a handler creates a local variable: every value a handler changes lives in $state.
     $state = @{
-        Package = $null; DisplayVersion = $DisplayVersion; DisplayName = $DisplayName; Publisher = $Publisher; AppId = $null; Account = $null
+        Package = $null; DisplayVersion = $null; DisplayName = $null; Publisher = $null; AppId = $null; Account = $null; Activated = $false
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        ArchitectureProperty = ''; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; ArchitectureCheck = $true; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -196,6 +195,7 @@ function Show-IwaIntuneWindow {
             DeviceRestartBehavior = [string]$ui.DeviceRestartBehavior.SelectedItem.Tag
             MaxRunTimeInMinutes   = $ui.MaxRunTimeInMinutes.Text.Trim()
             ArchitectureProperty  = $state.ArchitectureProperty
+            ArchitectureCheck     = $state.ArchitectureCheck
             Architectures         = $arch
             MinimumWindowsRelease = [string]$ui.MinimumWindowsRelease.SelectedItem.Tag
             Rules                 = @($state.Rules)
@@ -217,7 +217,8 @@ function Show-IwaIntuneWindow {
             $warnings += 'The package''s MSI product code differs from the detection rule; update the rule if this is a major upgrade.'
         }
         $lines = @($errors | ForEach-Object { $_.Message }) + $warnings
-        $ui.ValidationText.Text = ($lines -join "`n")
+        # One paragraph, not one line per message: the tab has the height of the Package tab.
+        $ui.ValidationText.Text = ($lines -join ("  {0}  " -f [char]0x00B7))
         $ui.ValidationText.Visibility = if ($lines.Count -and -not $state.Busy) { $visible } else { $collapsed }
         $ui.UploadButton.IsEnabled = ($errors.Count -eq 0) -and -not $state.Busy
     }
@@ -246,14 +247,23 @@ function Show-IwaIntuneWindow {
             $ui.ArchX86.IsChecked = $arch -contains 'x86'
             $ui.ArchArm64.IsChecked = $arch -contains 'arm64'
             $state.ExtraArchitectures = @($arch | Where-Object { $_ -and $_ -notin @('x64', 'x86', 'arm64') })
-            $ui.ArchKeptText.Text = 'Also kept: ' + ($state.ExtraArchitectures -join ', ')
-            $ui.ArchKeptText.Visibility = if ($state.ExtraArchitectures.Count) { $visible } else { $collapsed }
+            # Only an app read from Intune can have no architecture check; new apps always check it.
+            $state.ArchitectureCheck = ($Spec.ArchitectureCheck -ne $false)
+            $ui.ArchKeptText.Text = if (-not $state.ArchitectureCheck) { 'Not checked in Intune: leave all unchecked to keep it so.' }
+                                    else { 'Also kept: ' + ($state.ExtraArchitectures -join ', ') }
+            $ui.ArchKeptText.Visibility = if ($state.ExtraArchitectures.Count -or -not $state.ArchitectureCheck) { $visible } else { $collapsed }
             $state.Rules.Clear()
             foreach ($rule in @($Spec.Rules | Where-Object { $_ })) { [void]$state.Rules.Add($rule) }
         } finally {
             $state.Loading = $false
         }
         & $refreshRules
+    }
+    # Updating an app with new content: the version is the package's, not the one of the app in Intune.
+    $applyPackageVersion = {
+        if (-not ($ui.ModeUpdate.IsChecked -and $ui.UploadContent.IsChecked -and $state.Package)) { return }
+        $version = (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion).DisplayVersion
+        if ($version) { $ui.DisplayVersion.Text = $version }
     }
     $loadPackage = {
         param([string]$Path)
@@ -268,6 +278,7 @@ function Show-IwaIntuneWindow {
         if ($state.Package -and $ui.ModeNew.IsChecked) {
             & $setForm (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion -DisplayName $state.DisplayName -Publisher $state.Publisher)
         } else {
+            if ($state.AppId) { & $applyPackageVersion }
             & $validate
         }
     }
@@ -475,6 +486,7 @@ function Show-IwaIntuneWindow {
         $ui.OpenInIntune.IsEnabled = $true
         $ui.RetryUploadButton.Visibility = $collapsed
         & $setForm (ConvertFrom-IwaGraphApp -App $state.LoadedApp)
+        & $applyPackageVersion
         & $showStatus 'success' ('Loaded "{0}". Change what you need, then select Upload.' -f $state.LoadedApp.displayName)
     })
 
@@ -542,9 +554,10 @@ function Show-IwaIntuneWindow {
     foreach ($name in @('DisplayName', 'Publisher', 'DisplayVersion', 'Description', 'InstallCommandLine', 'UninstallCommandLine', 'MaxRunTimeInMinutes', 'PackagePath')) {
         $ui[$name].Add_TextChanged({ & $validate })
     }
-    foreach ($name in @('ArchX64', 'ArchX86', 'ArchArm64', 'UploadContent')) {
+    foreach ($name in @('ArchX64', 'ArchX86', 'ArchArm64')) {
         $ui[$name].Add_Click({ & $validate })
     }
+    $ui.UploadContent.Add_Click({ & $applyPackageVersion; & $validate })
 
     $ui.UploadButton.Add_Click({
         $package = if ($ui.UploadContent.IsChecked) { $state.Package } else { $null }
@@ -558,37 +571,51 @@ function Show-IwaIntuneWindow {
         & $startTask $state.AppId $body $state.Package
     })
     $ui.OpenInIntune.Add_Click({ if ($state.AppId) { Start-Process (Get-IwaIntunePortalUrl -AppId $state.AppId) } })
-    $ui.CloseButton.Add_Click({ $win.Close() })
-    # The result panel stays open after "Open in Intune", so the user can still close or go back.
+    # The result panel stays open after "Open in Intune", so the user can still close it and go on.
     $ui.DoneOpenIntune.Add_Click({ if ($state.AppId) { Start-Process (Get-IwaIntunePortalUrl -AppId $state.AppId) } })
     $ui.DoneBack.Add_Click({ $ui.DoneOverlay.Visibility = $collapsed })
-    $ui.DoneCloseWindow.Add_Click({ $win.Close() })
-    $win.Add_KeyDown({
-        param($evtSender, $e)
-        if ($e.Key -eq 'Escape') { $win.Close() }
-    })
-    $win.Add_Closing({
-        param($evtSender, $e)
-        if (-not $state.Task) { return }
-        if ($state.Task.Handle.IsCompleted) {
-            $timer.Stop()
-            try { $null = $state.Task.PowerShell.EndInvoke($state.Task.Handle) } catch { }
-            $state.Task.PowerShell.Dispose()
-            $state.Task = $null
-            return
+
+    # --- Used by the main window ------------------------------------------------------------------
+    # The Graph module check and the sign-in state wait for the tab: packaging never needs them.
+    $iwaActivate = {
+        if ($state.Activated) { return }
+        $state.Activated = $true
+        & $refreshAccount
+    }
+    $iwaOpenPackage = {
+        param([string]$PackagePath, [string]$DisplayVersion, [string]$DisplayName, [string]$Publisher)
+        if ($state.Busy) { return }
+        $state.DisplayVersion = $DisplayVersion; $state.DisplayName = $DisplayName; $state.Publisher = $Publisher
+        & $hideStatus
+        $ui.DoneOverlay.Visibility = $collapsed
+        # A package just built starts as a new app: never update the app picked or created before
+        # (after a create the tab stays on that app). To update one, choose Update existing and search.
+        if ($ui.ModeNew.IsChecked) {
+            $state.AppId = $null
+            $ui.OpenInIntune.IsEnabled = $false
+        } else {
+            $ui.ModeNew.IsChecked = $true
         }
-        $answer = [System.Windows.MessageBox]::Show($win, 'An upload is still running. Stop it and close the window? If the app was just created, it stays in Intune without content.', 'Publish to Intune',
-            [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
-        if ($answer -ne [System.Windows.MessageBoxResult]::Yes) { $e.Cancel = $true; return }
+        & $loadPackage $PackagePath
+    }
+    $iwaUploadRunning = { [bool]($state.Task -and -not $state.Task.Handle.IsCompleted) }
+    # On close: an upload that ended after the last timer tick still holds its runspace.
+    $iwaReleaseFinishedUpload = {
+        if (-not $state.Task -or -not $state.Task.Handle.IsCompleted) { return }
         $timer.Stop()
-        try { $state.Task.PowerShell.Stop() } catch { }
+        try { $null = $state.Task.PowerShell.EndInvoke($state.Task.Handle) } catch { }
         $state.Task.PowerShell.Dispose()
         $state.Task = $null
-    })
+    }
+    # BeginStop: Stop() would block the UI thread until the current block upload ends.
+    $iwaStopUpload = {
+        if (-not $state.Task) { return }
+        $timer.Stop()
+        try { $null = $state.Task.PowerShell.BeginStop($null, $null) } catch { }
+        $state.Task = $null
+    }
 
     # --- Start -------------------------------------------------------------------------------
-    & $refreshAccount
     & $applyMode
-    & $loadPackage $PackagePath
-    [void]$win.ShowDialog()
+    & $loadPackage ''
 }

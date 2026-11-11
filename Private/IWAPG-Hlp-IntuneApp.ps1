@@ -241,8 +241,10 @@ function New-IwaWin32AppBody {
         }
         rules                          = @(@($Spec.Rules) | Where-Object { $_ } | ForEach-Object { ConvertTo-IwaGraphRule -Rule $_ })
     }
-    $archList = @($Spec.Architectures) -join ','
-    if ($Spec.ArchitectureProperty -eq 'allowedArchitectures' -or @($Spec.Architectures) -contains 'arm64') {
+    $archList = @($Spec.Architectures | Where-Object { $_ }) -join ','
+    if (-not $archList -and $Spec.ArchitectureCheck -eq $false) {
+        # "Check operating system architecture: No" in Intune, kept as it is: the architecture properties are not sent.
+    } elseif ($Spec.ArchitectureProperty -eq 'allowedArchitectures' -or @($Spec.Architectures) -contains 'arm64') {
         # Portal-created apps, and any app with ARM64 (only valid in allowedArchitectures), set applicableArchitectures to 'none'.
         $body.allowedArchitectures = $archList
         $body.applicableArchitectures = 'none'
@@ -297,6 +299,7 @@ function ConvertFrom-IwaGraphApp {
     $arch = [string]$App.applicableArchitectures
     $archProperty = 'applicableArchitectures'
     if (-not $arch -or $arch -eq 'none') { $arch = [string]$App.allowedArchitectures; $archProperty = 'allowedArchitectures' }
+    $architectures = @($arch -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne 'none' })
     [ordered]@{
         DisplayName           = [string]$App.displayName
         Publisher             = [string]$App.publisher
@@ -308,7 +311,9 @@ function ConvertFrom-IwaGraphApp {
         DeviceRestartBehavior = $(if ($experience -and $experience.deviceRestartBehavior) { [string]$experience.deviceRestartBehavior } else { 'basedOnReturnCode' })
         MaxRunTimeInMinutes   = $(if ($experience -and $experience.maxRunTimeInMinutes) { [int]$experience.maxRunTimeInMinutes } else { 60 })
         ArchitectureProperty  = $archProperty
-        Architectures         = @($arch -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne 'none' })
+        Architectures         = $architectures
+        # No architecture in either property: "Check operating system architecture: No" in the portal.
+        ArchitectureCheck     = [bool]$architectures.Count
         MinimumWindowsRelease = $(if ($App.minimumSupportedWindowsRelease) { [string]$App.minimumSupportedWindowsRelease } else { $script:IwaWindowsReleases[0] })
         Rules                 = @(@($App.rules) | Where-Object { $_ } | ForEach-Object { ConvertFrom-IwaGraphRule -GraphRule $_ })
     }
@@ -337,7 +342,7 @@ function Test-IwaWin32AppSpec {
     if (-not [int]::TryParse([string]$Spec.MaxRunTimeInMinutes, [ref]$minutes) -or $minutes -lt 1 -or $minutes -gt 1440) {
         & $add 'MaxRunTimeInMinutes' 'Max run time must be a number of minutes between 1 and 1440.'
     }
-    if (-not @($Spec.Architectures | Where-Object { $_ }).Count) { & $add 'Architectures' 'Select at least one architecture.' }
+    if (-not @($Spec.Architectures | Where-Object { $_ }).Count -and $Spec.ArchitectureCheck -ne $false) { & $add 'Architectures' 'Select at least one architecture.' }
     # ARM64 (and portal-created apps) go to allowedArchitectures, which accepts only x86, x64 and arm64.
     $legacy = @($Spec.Architectures | Where-Object { $_ -and $_ -notin @('x86', 'x64', 'arm64') })
     if ($legacy.Count -and ($Spec.ArchitectureProperty -eq 'allowedArchitectures' -or @($Spec.Architectures) -contains 'arm64')) {

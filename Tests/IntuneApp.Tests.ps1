@@ -234,6 +234,24 @@ Describe 'ConvertFrom-IwaGraphApp' {
         $body.Contains('allowedArchitectures') | Should -BeFalse
         (New-IwaWin32AppBody -Spec (New-ValidSpec)).Contains('allowedArchitectures') | Should -BeFalse
     }
+    It 'keeps "no architecture check" as it is in Intune' {
+        $noCheck = [pscustomobject]@{ displayName = 'Contoso Tool'; applicableArchitectures = 'none'; allowedArchitectures = $null; rules = @() }
+        $spec = ConvertFrom-IwaGraphApp -App $noCheck
+        $spec.ArchitectureCheck | Should -BeFalse
+        @(Test-IwaWin32AppSpec -Spec $spec | Where-Object Field -eq 'Architectures') | Should -BeNullOrEmpty
+        $body = New-IwaWin32AppBody -Spec $spec -ForUpdate
+        $body.Contains('applicableArchitectures') | Should -BeFalse
+        $body.Contains('allowedArchitectures') | Should -BeFalse
+        # Selecting architectures turns the check on.
+        $spec.Architectures = @('x64')
+        (New-IwaWin32AppBody -Spec $spec -ForUpdate).allowedArchitectures | Should -Be 'x64'
+        (ConvertFrom-IwaGraphApp -App $app).ArchitectureCheck | Should -BeTrue
+    }
+    It 'still requires an architecture for new apps' {
+        $spec = New-ValidSpec
+        $spec.Architectures = @()
+        @(Test-IwaWin32AppSpec -Spec $spec | Where-Object Field -eq 'Architectures') | Should -Not -BeNullOrEmpty
+    }
     It 'keeps a script rule without content as raw' {
         $noContent = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppPowerShellScriptRule'; ruleType = 'detection'; scriptContent = $null }
         (ConvertFrom-IwaGraphRule -GraphRule $noContent).Type | Should -Be 'Raw'
