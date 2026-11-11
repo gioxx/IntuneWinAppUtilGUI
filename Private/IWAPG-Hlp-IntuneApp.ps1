@@ -52,7 +52,7 @@ function Get-IwaWin32AppDefault {
     if ($Package.MsiInfo) {
         $msi = $Package.MsiInfo
         $spec.Publisher = [string]$msi.Publisher
-        if ($msi.ProductVersion) { $spec.DisplayVersion = [string]$msi.ProductVersion }
+        if ($msi.ProductVersion -and -not $DisplayVersion) { $spec.DisplayVersion = [string]$msi.ProductVersion }
         $spec.InstallCommandLine = "msiexec /i `"$setup`" /qn"
         $spec.UninstallCommandLine = "msiexec /x $($msi.ProductCode) /qn"
         $spec.Rules = @(@{ Type = 'MsiProductCode'; ProductCode = [string]$msi.ProductCode })
@@ -92,7 +92,7 @@ function New-IwaDetectionRule {
 
     switch ($Type) {
         'MsiProductCode' {
-            if ($ProductCode -notmatch '^\{[0-9A-Fa-f-]{36}\}$') { throw 'Enter the MSI product code as {GUID}.' }
+            if ($ProductCode -notmatch '^\{[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\}$') { throw 'Enter the MSI product code as {GUID}.' }
             @{ Type = 'MsiProductCode'; ProductCode = $ProductCode.ToUpperInvariant() }
         }
         'File' {
@@ -225,8 +225,8 @@ function New-IwaWin32AppBody {
         rules                          = @(@($Spec.Rules) | Where-Object { $_ } | ForEach-Object { ConvertTo-IwaGraphRule -Rule $_ })
     }
     $archList = @($Spec.Architectures) -join ','
-    if ($Spec.ArchitectureProperty -eq 'allowedArchitectures') {
-        # Apps created in the portal use allowedArchitectures and set applicableArchitectures to 'none'.
+    if ($Spec.ArchitectureProperty -eq 'allowedArchitectures' -or @($Spec.Architectures) -contains 'arm64') {
+        # Portal-created apps, and any app with ARM64 (only valid in allowedArchitectures), set applicableArchitectures to 'none'.
         $body.allowedArchitectures = $archList
         $body.applicableArchitectures = 'none'
     } else {
