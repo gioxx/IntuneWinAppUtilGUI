@@ -188,7 +188,7 @@ function Publish-IwaWin32AppContent {
     $total = (Get-Item -LiteralPath $ContentFile).Length
     $file = Invoke-IwaGraph -Method POST -Uri $filesUri -Body ([ordered]@{
         '@odata.type' = '#microsoft.graph.mobileAppContentFile'
-        name          = Split-Path $ContentFile -Leaf
+        name          = $Package.FileName
         size          = $Package.UnencryptedSize
         sizeEncrypted = $total
         manifest      = $null

@@ -44,6 +44,9 @@ function Read-IwaIntuneWinPackage {
             Path            = $Path
             Name            = [string]$info.Name
             SetupFile       = [string]$info.SetupFile
+            # Name of the encrypted content inside the package: Intune expects it for both
+            # win32LobApp.fileName and the content file, whatever the outer .intunewin is called.
+            FileName        = if ([string]$info.FileName) { [string]$info.FileName } else { $content.Name }
             ContentEntry    = $content.FullName
             UnencryptedSize = [int64]$info.UnencryptedContentSize
             EncryptedSize   = [int64]$content.Length

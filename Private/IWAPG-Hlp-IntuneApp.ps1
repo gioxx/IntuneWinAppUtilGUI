@@ -264,7 +264,7 @@ function New-IwaWin32AppBody {
         $body.developer = ''
     }
     if ($Package) {
-        $body.fileName = Split-Path ([string]$Package.Path) -Leaf
+        $body.fileName = $Package.FileName
         $body.setupFilePath = $Package.SetupFile
         if ($Package.MsiInfo) {
             $packageType = switch ([string]$Package.MsiInfo.ExecutionContext) { 'User' { 'perUser' } 'Any' { 'dualPurpose' } default { 'perMachine' } }
