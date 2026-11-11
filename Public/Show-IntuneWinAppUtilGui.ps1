@@ -589,10 +589,14 @@ function Show-IntuneWinAppUtilGUI {
         }
     })
 
-    # Downloads the latest IntuneWinAppUtil.exe into the local bin folder and selects it.
+    # Downloads IntuneWinAppUtil.exe into the local bin folder and selects it: from the given release ZIP,
+    # or from the default (master branch) when none is given.
     $downloadToolNow = {
+        param([string]$ZipUrl)
         try {
-            $newPath = Invoke-DownloadIntuneTool
+            $downloadArgs = @{}
+            if ($ZipUrl) { $downloadArgs.RepoZipUrl = $ZipUrl }
+            $newPath = Invoke-DownloadIntuneTool @downloadArgs
             $ToolPathBox.Text = $newPath
             Show-ToolVersion -Path $newPath -Target $ToolVersionText
 
@@ -654,7 +658,8 @@ function Show-IntuneWinAppUtilGUI {
         $answer = [System.Windows.MessageBox]::Show($window,
             "A newer IntuneWinAppUtil.exe is available.`n`n$current`nLatest: $latestText`n`nDownload it now? It is saved in the local bin folder and selected here.",
             "Check for updates", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
-        if ($answer -eq [System.Windows.MessageBoxResult]::Yes) { & $downloadToolNow }
+        # The release just advertised, not the master branch: the two can contain different binaries.
+        if ($answer -eq [System.Windows.MessageBoxResult]::Yes) { & $downloadToolNow (Get-IntuneWinAppUtilReleaseZipUrl -Release $latest.Release) }
     })
 
     # When user types/pastes the tool path manually, show version if valid

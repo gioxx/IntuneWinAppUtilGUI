@@ -410,6 +410,17 @@ function Get-IntuneWinAppUtilLatestVersion {
     [pscustomobject]@{ Release = [string]$data.latest.release; FileVersion = $latest }
 }
 
+function Get-IntuneWinAppUtilReleaseZipUrl {
+    <#
+    .SYNOPSIS
+    ZIP URL of one tagged release of the Microsoft Win32 Content Prep Tool (for Invoke-DownloadIntuneTool -RepoZipUrl).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Release)
+
+    'https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/archive/refs/tags/{0}.zip' -f [uri]::EscapeDataString($Release)
+}
+
 function Test-IntuneWinAppUtilUpdateAvailable {
     <#
     .SYNOPSIS

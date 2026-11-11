@@ -251,6 +251,15 @@ Describe 'Test-IwaWin32AppSpec' {
         $fields | Should -Contain 'DisplayName'
         $fields | Should -Contain 'UninstallCommandLine'
     }
+    It 'rejects ARM64 together with an architecture kept from the app (neutral, arm)' {
+        $spec = New-ValidSpec
+        $spec.Architectures = @('arm64', 'neutral')
+        $errors = @(Test-IwaWin32AppSpec -Spec $spec)
+        $errors.Field | Should -Contain 'Architectures'
+        ($errors | Where-Object Field -eq 'Architectures').Message | Should -Match 'neutral'
+        $spec.Architectures = @('x64', 'neutral')
+        @(Test-IwaWin32AppSpec -Spec $spec).Count | Should -Be 0
+    }
     It 'needs an architecture and a detection rule' {
         $spec = New-ValidSpec
         $spec.Architectures = @(); $spec.Rules = @(@{ Type = 'Raw'; Graph = [pscustomobject]@{ ruleType = 'requirement' } })

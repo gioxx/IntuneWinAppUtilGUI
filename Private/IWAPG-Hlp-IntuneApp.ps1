@@ -338,6 +338,11 @@ function Test-IwaWin32AppSpec {
         & $add 'MaxRunTimeInMinutes' 'Max run time must be a number of minutes between 1 and 1440.'
     }
     if (-not @($Spec.Architectures | Where-Object { $_ }).Count) { & $add 'Architectures' 'Select at least one architecture.' }
+    # ARM64 (and portal-created apps) go to allowedArchitectures, which accepts only x86, x64 and arm64.
+    $legacy = @($Spec.Architectures | Where-Object { $_ -and $_ -notin @('x86', 'x64', 'arm64') })
+    if ($legacy.Count -and ($Spec.ArchitectureProperty -eq 'allowedArchitectures' -or @($Spec.Architectures) -contains 'arm64')) {
+        & $add 'Architectures' ("ARM64 cannot be combined with {0}, kept from the app: uncheck ARM64, or change the architectures in the Intune portal." -f ($legacy -join ', '))
+    }
 
     $rules = @($Spec.Rules | Where-Object { $_ })
     if (-not @($rules | Where-Object { $_.Type -ne 'Raw' -or $_.Graph.ruleType -eq 'detection' }).Count) {

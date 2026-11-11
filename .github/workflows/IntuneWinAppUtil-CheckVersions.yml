@@ -81,6 +81,8 @@ jobs:
       shell: pwsh
       run: |
         .\Tools\Update-IntuneWinAppUtilVersions.ps1 -OutputDirectory .\Tools
+        # Do not record the tag as processed when the list could not be built: the next run retries.
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
         # Save new version for next runs
         "${{ steps.get_latest.outputs.latest_tag }}" | Out-File -FilePath Tools/last_processed_version.txt -Encoding utf8
