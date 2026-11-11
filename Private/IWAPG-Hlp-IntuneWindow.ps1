@@ -82,6 +82,8 @@ $script:IwaIntuneTaskScript = {
         $State.Done = $true
     } catch {
         $State.Error = if (Get-Command Get-IwaGraphErrorMessage -ErrorAction SilentlyContinue) { Get-IwaGraphErrorMessage -ErrorRecord $_ } else { $_.Exception.Message }
+        # No HTTP answer (or a timeout/server error): the request may still have been carried out.
+        $State.NoAnswer = if (Get-Command Test-IwaTransientHttpError -ErrorAction SilentlyContinue) { Test-IwaTransientHttpError -ErrorRecord $_ } else { $true }
     } finally {
         if ($work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -112,7 +114,7 @@ function Initialize-IwaIntunePanel {
         Package = $null; DisplayVersion = $null; DisplayName = $null; Publisher = $null; AppId = $null; Account = $null; Activated = $false
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; LoadingIndex = -1; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -390,7 +392,7 @@ function Initialize-IwaIntunePanel {
                 $ui.UploadContent.IsChecked = [bool]$state.LastUpload
                 $message += "`nThe app was created in Intune without content. Select Retry upload to send the package to the same app."
                 if ($state.LastUpload) { $ui.RetryUploadButton.Visibility = $visible }
-            } elseif ($task.IsNew -and $task.State.Step -eq 'Creating the app in Intune') {
+            } elseif ($task.IsNew -and $task.State.Step -eq 'Creating the app in Intune' -and $task.State.NoAnswer) {
                 # The request may have reached Intune even if its answer did not come back.
                 $message += "`nIf the connection dropped, the app may have been created anyway: search for it in Update existing before you upload again."
             } else {
@@ -422,6 +424,7 @@ function Initialize-IwaIntunePanel {
     $ui.ModeUpdate.Add_Checked({ & $applyMode })
 
     $ui.InstallGraphButton.Add_Click({
+        if ($state.Waiting) { return }
         $ui.GraphStatusText.Text = 'Installing Microsoft.Graph.Authentication for the current user...'
         $ui.GraphStatusText.Visibility = $visible
         $state.InstallError = $null
@@ -434,6 +437,7 @@ function Initialize-IwaIntunePanel {
     })
 
     $ui.SignInButton.Add_Click({
+        if ($state.Waiting) { return }
         if ($state.Account) { Disconnect-IwaIntune; & $refreshAccount; return }
         $ui.GraphStatusText.Text = 'Signing in... complete the sign-in in the window that opens.'
         $ui.GraphStatusText.Visibility = $visible
@@ -467,9 +471,11 @@ function Initialize-IwaIntunePanel {
     })
 
     $runSearch = {
+        if ($state.Waiting) { return }
         & $hideStatus
         $state.AppId = $null
         $ui.OpenInIntune.IsEnabled = $false
+        $ui.RetryUploadButton.Visibility = $collapsed
         $state.SearchError = $null
         & $withWait {
             try { $state.SearchResults = @(Get-IwaWin32App -Search $ui.SearchBox.Text.Trim()) }
@@ -493,9 +499,18 @@ function Initialize-IwaIntunePanel {
     $ui.SearchResults.Add_SelectionChanged({
         $index = $ui.SearchResults.SelectedIndex
         if ($state.LoadingResults -or $index -lt 0) { return }
+        if ($state.Waiting) {
+            # A key pressed while another app loads: keep the list on the app the form is loading.
+            $state.LoadingResults = $true
+            $ui.SearchResults.SelectedIndex = $state.LoadingIndex
+            $state.LoadingResults = $false
+            return
+        }
+        $state.LoadingIndex = $index
         $picked = $state.SearchResults[$index]
         $state.AppId = $null
         $ui.OpenInIntune.IsEnabled = $false
+        $ui.RetryUploadButton.Visibility = $collapsed
         $state.LoadError = $null
         $state.LoadedApp = $null
         & $withWait {
@@ -590,7 +605,12 @@ function Initialize-IwaIntunePanel {
         & $startTask $state.AppId $body $package
     })
     $ui.RetryUploadButton.Add_Click({
+        # Without the app the failed create made, a retry would create a second app.
+        if (-not $state.AppId) { $ui.RetryUploadButton.Visibility = $collapsed; return }
         if (-not $state.Package) { & $showStatus 'error' 'Select a valid .intunewin package first.'; return }
+        # Same checks as Upload: the form is sent too.
+        & $validate
+        if (-not $ui.UploadButton.IsEnabled) { return }
         # Send the current form too, so edits made after the failure are not lost.
         $body = New-IwaWin32AppBody -Spec (& $getForm) -Package $state.Package -ForUpdate
         & $startTask $state.AppId $body $state.Package
