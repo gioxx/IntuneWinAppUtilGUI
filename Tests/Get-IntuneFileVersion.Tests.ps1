@@ -4,7 +4,8 @@ Describe 'Get-IntuneFileVersion' {
     }
 
     It 'returns the FileVersion for an executable' {
-        $path = Join-Path $PSHOME 'pwsh.exe'
+        # The running host: pwsh.exe on PowerShell 7, powershell.exe on Windows PowerShell 5.1.
+        $path = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
         Get-IntuneFileVersion -Path $path | Should -Be ([System.Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion)
     }
 

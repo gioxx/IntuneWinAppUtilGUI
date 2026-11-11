@@ -1,3 +1,9 @@
+BeforeDiscovery {
+    # Windows PowerShell 5.1 (.NET Framework) cannot open full paths over 260 characters, and a
+    # 255-character file name always exceeds them. The GUI then keeps the package in staging and says so.
+    $noLongPaths = $PSVersionTable.PSEdition -eq 'Desktop'
+}
+
 Describe 'Publish-IntuneWinPackage' {
     BeforeAll {
         . (Join-Path $PSScriptRoot '..\Private\IWAPG-Hlp-Tool.ps1')
@@ -50,7 +56,7 @@ Describe 'Publish-IntuneWinPackage' {
         Get-ChildItem $output -Recurse -Filter '*.partial' | Should -BeNullOrEmpty
     }
 
-    It 'publishes a final name close to the 255-character limit' {
+    It 'publishes a final name close to the 255-character limit' -Skip:$noLongPaths {
         $dest = Join-Path $output (('a' * 240) + '.intunewin')
         Publish-IntuneWinPackage -Path $package -Destination $dest -CopyFirst -MaxAttempts 1 | Should -Be $dest
         Get-Content -LiteralPath $dest | Should -Be 'package'
@@ -67,7 +73,7 @@ Describe 'Publish-IntuneWinPackage' {
         (Get-Item $dest).Length | Should -Be 9MB
     }
 
-    It 'keeps a collision suffix within the 255-character name limit' {
+    It 'keeps a collision suffix within the 255-character name limit' -Skip:$noLongPaths {
         $longName = ('b' * 245) + '.intunewin'   # 255 characters
         $dest = Join-Path $output $longName
         Set-Content -LiteralPath $dest -Value 'existing'
