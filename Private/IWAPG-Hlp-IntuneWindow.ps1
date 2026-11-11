@@ -117,7 +117,7 @@ function Initialize-IwaIntunePanel {
         Package = $null; DisplayVersion = $null; DisplayName = $null; Publisher = $null; AppId = $null; Account = $null; Activated = $false
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; LoadingIndex = -1; ClientId = ''; TenantId = ''; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; LoadingIndex = -1; ClientId = ''; TenantId = ''; ConfigWarning = $null; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -307,8 +307,9 @@ function Initialize-IwaIntunePanel {
         $state.Account = $null
         $ui.ConnectionAppText.Text = if ($state.ClientId) { 'App registration {0}...' -f $state.ClientId.Substring(0, 8) } else { 'Microsoft Graph Command Line Tools' }
         if ($hasModule) {
-            try { $state.Account = Get-IwaIntuneAccount -ClientId $state.ClientId } catch { Write-IwaDebugLog "Reading the Graph context failed: $($_.Exception.Message)" }
-            $ui.GraphStatusText.Visibility = $collapsed
+            try { $state.Account = Get-IwaIntuneAccount -ClientId $state.ClientId -TenantId $state.TenantId } catch { Write-IwaDebugLog "Reading the Graph context failed: $($_.Exception.Message)" }
+            $ui.GraphStatusText.Text = $state.ConfigWarning
+            $ui.GraphStatusText.Visibility = if ($state.ConfigWarning) { $visible } else { $collapsed }
         } else {
             $ui.GraphStatusText.Text = 'Publishing needs the Microsoft.Graph.Authentication module. Select Install now, or run: Install-Module Microsoft.Graph.Authentication -Scope CurrentUser'
             $ui.GraphStatusText.Visibility = $visible
@@ -629,14 +630,16 @@ function Initialize-IwaIntunePanel {
     }
     $hideConnection = { $ui.ConnectionOverlay.Visibility = $collapsed }
     $saveConnection = {
-        $clientId = $ui.ConnectionClientId.Text.Trim()
-        $tenantId = $ui.ConnectionTenantId.Text.Trim()
-        $problem = Test-IwaConnectionSetting -ClientId $clientId -TenantId $tenantId
+        $problem = Test-IwaConnectionSetting -ClientId $ui.ConnectionClientId.Text -TenantId $ui.ConnectionTenantId.Text
         if ($problem) {
             $ui.ConnectionError.Text = $problem
             $ui.ConnectionError.Visibility = $visible
             return
         }
+        $canonical = ConvertTo-IwaConnectionSetting -ClientId $ui.ConnectionClientId.Text -TenantId $ui.ConnectionTenantId.Text
+        $clientId = $canonical.ClientId
+        $tenantId = $canonical.TenantId
+        $state.ConfigWarning = $null
         $changed = ($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId)
         $state.ClientId = $clientId
         $state.TenantId = $tenantId
@@ -645,9 +648,12 @@ function Initialize-IwaIntunePanel {
         # A session opened with the other app must not be reused: sign out, the next sign-in uses the new one.
         if ($state.Account) { Disconnect-IwaIntune }
         # $saveConfig belongs to Show-IntuneWinAppUtilGUI, which dot-sources this function.
-        try { & $saveConfig } catch { Write-IwaDebugLog "Saving config.json failed: $($_.Exception.Message)" }
+        $saveError = $null
+        try { & $saveConfig } catch { $saveError = $_.Exception.Message; Write-IwaDebugLog "Saving config.json failed: $saveError" }
         if ($state.Activated) { & $refreshAccount }
-        & $showStatus 'success' $(if ($clientId) { 'Connection settings saved: sign in to use your app registration.' } else { 'Connection settings saved: sign in to use Microsoft''s app.' })
+        $who = if ($clientId) { 'your app registration' } else { 'Microsoft''s app' }
+        if ($saveError) { & $showStatus 'error' "The next sign-in uses $who, but the setting could not be saved for the next start: $saveError" }
+        else { & $showStatus 'success' "Connection settings saved: sign in to use $who." }
     }
     $ui.ConnectionSettingsLink.Add_Click({ & $showConnection })
     $ui.ConnectionSave.Add_Click({ & $saveConnection })
@@ -663,8 +669,17 @@ function Initialize-IwaIntunePanel {
     # From config.json, before the tab is first shown.
     $iwaSetConnection = {
         param([string]$ClientId, [string]$TenantId)
-        if (Test-IwaConnectionSetting -ClientId $ClientId -TenantId $TenantId) { return }
-        $state.ClientId = "$ClientId".Trim(); $state.TenantId = "$TenantId".Trim()
+        $problem = Test-IwaConnectionSetting -ClientId $ClientId -TenantId $TenantId
+        if ($problem) {
+            # Hand-edited config.json: say so on the tab instead of dropping the values without a word.
+            Write-IwaDebugLog "Ignoring the app registration in config.json: $problem"
+            $state.ConfigWarning = "The app registration in config.json was ignored: $problem Open Connection settings to fix it; until then Microsoft's app is used."
+            $ui.GraphStatusText.Text = $state.ConfigWarning
+            $ui.GraphStatusText.Visibility = $visible
+            return
+        }
+        $canonical = ConvertTo-IwaConnectionSetting -ClientId $ClientId -TenantId $TenantId
+        $state.ClientId = $canonical.ClientId; $state.TenantId = $canonical.TenantId
         $ui.ConnectionAppText.Text = if ($state.ClientId) { 'App registration {0}...' -f $state.ClientId.Substring(0, 8) } else { 'Microsoft Graph Command Line Tools' }
     }
     $iwaActivate = {

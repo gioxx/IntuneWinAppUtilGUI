@@ -33,6 +33,21 @@ function Test-IwaConnectionSetting {
     }
 }
 
+function ConvertTo-IwaConnectionSetting {
+    <#
+    .SYNOPSIS
+    Returns valid connection settings in canonical form (plain lower-case GUIDs, trimmed domain).
+    #>
+    [CmdletBinding()]
+    param([string]$ClientId, [string]$TenantId)
+
+    $clientId = "$ClientId".Trim(); $tenantId = "$TenantId".Trim()
+    $guid = [guid]::Empty
+    if ([guid]::TryParse($clientId, [ref]$guid)) { $clientId = $guid.ToString() }
+    if ([guid]::TryParse($tenantId, [ref]$guid)) { $tenantId = $guid.ToString() }
+    [pscustomobject]@{ ClientId = $clientId; TenantId = $tenantId }
+}
+
 function Get-IwaIntuneAccount {
     <#
     .SYNOPSIS
@@ -40,7 +55,7 @@ function Get-IwaIntuneAccount {
     expected app: -ClientId (a custom app registration), or Microsoft's app when it is empty.
     #>
     [CmdletBinding()]
-    param([string]$ClientId)
+    param([string]$ClientId, [string]$TenantId)
 
     if (-not (Get-Command Get-MgContext -ErrorAction SilentlyContinue)) { return $null }
     $context = Get-MgContext
@@ -48,6 +63,9 @@ function Get-IwaIntuneAccount {
     # A session opened with the other app does not count: the next sign-in must use the configured one.
     $expected = if ($ClientId) { $ClientId } else { $script:IwaGraphCliClientId }
     if ($context.ClientId -and [string]$context.ClientId -ne $expected) { return $null }
+    # Same multi-tenant app in another tenant: not the configured connection either (only a tenant GUID can be compared).
+    $guid = [guid]::Empty
+    if ($ClientId -and [guid]::TryParse($TenantId, [ref]$guid) -and $context.TenantId -and [string]$context.TenantId -ne $guid.ToString()) { return $null }
     [string]$context.Account
 }
 
@@ -59,7 +77,7 @@ function Connect-IwaIntune {
     $connect = @{ Scopes = $script:IwaGraphScope; NoWelcome = $true; ErrorAction = 'Stop' }
     if ($ClientId) { $connect.ClientId = $ClientId; $connect.TenantId = $TenantId }
     Connect-MgGraph @connect
-    Get-IwaIntuneAccount -ClientId $ClientId
+    Get-IwaIntuneAccount -ClientId $ClientId -TenantId $TenantId
 }
 
 function Get-IwaSignInErrorMessage {
@@ -73,7 +91,8 @@ function Get-IwaSignInErrorMessage {
     $app = if ($CustomApp) { 'your app registration' } else { '"Microsoft Graph Command Line Tools"' }
     if ($Message -match 'AADSTS700016') { return 'The app registration was not found in that tenant. Check the Client ID and the Tenant ID in Connection settings.' }
     if ($Message -match 'AADSTS7000218') { return 'The app registration does not allow public client flows. In Entra ID, open it, then Authentication, and set "Allow public client flows" to Yes.' }
-    if ($Message -match 'AADSTS50011') { return 'The redirect URI is missing. In Entra ID, open the app registration, then Authentication, add the "Mobile and desktop applications" platform with the redirect URI http://localhost.' }
+    # Windows signs in through the account broker (WAM), which uses its own redirect URI; http://localhost is the browser fallback.
+    if ($Message -match 'AADSTS50011') { return 'A redirect URI is missing. In Entra ID, open the app registration, then Authentication, "Mobile and desktop applications", and add both ms-appx-web://Microsoft.AAD.BrokerPlugin/<Client ID> and http://localhost.' }
     if ($Message -match 'AADSTS65001|AADSTS90094|consent') { return "Admin consent is needed for DeviceManagementApps.ReadWrite.All on $app. Ask a tenant administrator to grant it, then sign in again." }
     if ($Message -match 'window handle') { return 'Sign-in could not open the Windows account prompt. Start the GUI from a PowerShell console window (Windows Terminal or the PowerShell console) and try again.' }
     "Sign-in failed: $Message"
