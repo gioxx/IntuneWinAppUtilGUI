@@ -807,7 +807,18 @@
                 <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.30" Color="#0F172A"/>
             </Border.Effect>
             <StackPanel>
-                <TextBlock Text="Connection settings" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Connection settings" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" VerticalAlignment="Center"/>
+                    <!-- Custom app registrations are alpha (#30): Microsoft's app stays the recommended way. -->
+                    <Border Margin="10,0,0,0" Padding="8,2" CornerRadius="10" Background="#FFF4E5" BorderBrush="#F5B060" BorderThickness="1" VerticalAlignment="Center"
+                            AutomationProperties.Name="Alpha feature">
+                        <TextBlock Text="ALPHA" FontSize="10.5" FontWeight="Bold" Foreground="#9A4A00"/>
+                    </Border>
+                </StackPanel>
+                <Border Margin="0,10,0,0" Padding="10,8" CornerRadius="6" Background="#FFF8EE" BorderBrush="#F5D0A0" BorderThickness="1">
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="#7A3E00"
+                               Text="Signing in with your own app registration is an alpha feature: it is still being worked on and has not been tried with every tenant setup. Microsoft's app (the default) is the recommended way to sign in."/>
+                </Border>
                 <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource MutedBrush}"
                            Text="By default, Publish to Intune signs in with Microsoft's &quot;Microsoft Graph Command Line Tools&quot; app. If your tenant blocks it or requires its own app registration, enter it here. The app registration needs the delegated permission DeviceManagementApps.ReadWrite.All (with admin consent), &quot;Allow public client flows&quot; set to Yes, and two redirect URIs under &quot;Mobile and desktop applications&quot;: ms-appx-web://Microsoft.AAD.BrokerPlugin/&lt;Client ID&gt; (the Windows sign-in broker) and http://localhost."/>
                 <Label Content="Client ID (Application ID)" Target="{Binding ElementName=ConnectionClientId}" Margin="0,14,0,0"/>

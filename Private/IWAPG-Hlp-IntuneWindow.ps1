@@ -305,7 +305,7 @@ function Initialize-IwaIntunePanel {
         $ui.InstallGraphButton.Visibility = if ($hasModule) { $collapsed } else { $visible }
         $ui.SignInButton.IsEnabled = $hasModule
         $state.Account = $null
-        $ui.ConnectionAppText.Text = if ($state.ClientId) { 'App registration {0}...' -f $state.ClientId.Substring(0, 8) } else { 'Microsoft Graph Command Line Tools' }
+        $ui.ConnectionAppText.Text = if ($state.ClientId) { 'App registration {0}... (alpha)' -f $state.ClientId.Substring(0, 8) } else { 'Microsoft Graph Command Line Tools' }
         if ($hasModule) {
             try { $state.Account = Get-IwaIntuneAccount -ClientId $state.ClientId -TenantId $state.TenantId } catch { Write-IwaDebugLog "Reading the Graph context failed: $($_.Exception.Message)" }
             $ui.GraphStatusText.Text = $state.ConfigWarning
@@ -680,7 +680,7 @@ function Initialize-IwaIntunePanel {
         }
         $canonical = ConvertTo-IwaConnectionSetting -ClientId $ClientId -TenantId $TenantId
         $state.ClientId = $canonical.ClientId; $state.TenantId = $canonical.TenantId
-        $ui.ConnectionAppText.Text = if ($state.ClientId) { 'App registration {0}...' -f $state.ClientId.Substring(0, 8) } else { 'Microsoft Graph Command Line Tools' }
+        $ui.ConnectionAppText.Text = if ($state.ClientId) { 'App registration {0}... (alpha)' -f $state.ClientId.Substring(0, 8) } else { 'Microsoft Graph Command Line Tools' }
     }
     $iwaActivate = {
         if ($state.Activated) { return }
