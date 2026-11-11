@@ -588,7 +588,14 @@ function Initialize-IwaIntunePanel {
         $state.DisplayVersion = $DisplayVersion; $state.DisplayName = $DisplayName; $state.Publisher = $Publisher
         & $hideStatus
         $ui.DoneOverlay.Visibility = $collapsed
-        if ($ui.ModeUpdate.IsChecked) { $ui.UploadContent.IsChecked = $true }
+        # A package just built starts as a new app: never update the app picked or created before
+        # (after a create the tab stays on that app). To update one, choose Update existing and search.
+        if ($ui.ModeNew.IsChecked) {
+            $state.AppId = $null
+            $ui.OpenInIntune.IsEnabled = $false
+        } else {
+            $ui.ModeNew.IsChecked = $true
+        }
         & $loadPackage $PackagePath
     }
     $iwaUploadRunning = { [bool]($state.Task -and -not $state.Task.Handle.IsCompleted) }
