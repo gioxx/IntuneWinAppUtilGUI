@@ -109,3 +109,53 @@ $adtSession.AppName = 'Contoso App'
         $result.SetupFile | Should -Be 'Invoke-AppDeployToolkit.exe'
     }
 }
+
+Describe 'Get-SetupAppInfo' {
+    BeforeAll {
+        Add-Type -AssemblyName PresentationFramework
+        . (Join-Path $PSScriptRoot '..\Private\IWAPG-Hlp-Setup.ps1')
+    }
+
+    It 'reads name, version and publisher from PSADT, unsanitized' {
+        $source = Join-Path $TestDrive 'InfoPsadt'
+        New-Item -Path $source -ItemType Directory -Force | Out-Null
+        New-Item -Path (Join-Path $source 'Invoke-AppDeployToolkit.exe') -ItemType File -Force | Out-Null
+        Set-Content -Path (Join-Path $source 'Invoke-AppDeployToolkit.ps1') -Value @'
+$adtSession = @{
+    AppVendor = 'Contoso Ltd'
+    AppName = 'Contoso App'
+    AppVersion = '1.2.3'
+}
+'@
+        $info = Get-SetupAppInfo -SourcePath $source
+        $info.Name | Should -Be 'Contoso App'
+        $info.Version | Should -Be '1.2.3'
+        $info.Publisher | Should -Be 'Contoso Ltd'
+    }
+
+    It 'falls back to the MSI when the PSADT AppName is empty' {
+        $source = Join-Path $TestDrive 'InfoPsadtMsi'
+        New-Item -Path (Join-Path $source 'Files') -ItemType Directory -Force | Out-Null
+        New-Item -Path (Join-Path $source 'Invoke-AppDeployToolkit.exe') -ItemType File -Force | Out-Null
+        New-Item -Path (Join-Path $source 'Files\contoso.msi') -ItemType File -Force | Out-Null
+        Set-Content -Path (Join-Path $source 'Invoke-AppDeployToolkit.ps1') -Value @'
+$adtSession = @{
+    AppVendor = ''
+    AppName = ''
+    AppVersion = ''
+}
+'@
+        Mock Get-MsiPackageMetadata { [pscustomobject]@{ ProductName = 'Contoso App (x64 edition)'; ProductVersion = '26.06.00.0'; Manufacturer = 'Contoso Ltd' } }
+        $info = Get-SetupAppInfo -SourcePath $source
+        $info.Name | Should -Be 'Contoso App (x64 edition)'
+        $info.Version | Should -Be '26.06.00.0'
+        $info.Publisher | Should -Be 'Contoso Ltd'
+        Should -Invoke Get-MsiPackageMetadata -Times 1 -ParameterFilter { $MsiPath -like '*\Files\contoso.msi' }
+    }
+
+    It 'returns $null when nothing is found' {
+        $source = Join-Path $TestDrive 'InfoEmpty'
+        New-Item -Path $source -ItemType Directory -Force | Out-Null
+        Get-SetupAppInfo -SourcePath $source | Should -BeNullOrEmpty
+    }
+}

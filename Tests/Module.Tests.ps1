@@ -5,7 +5,7 @@ Describe 'IntuneWinAppUtilGUI module' {
     }
 
     It 'has a valid manifest and exports the file version helper' {
-        $module.Version.ToString() | Should -Be '1.1.4'
+        $module.Version.ToString() | Should -Be '1.2.0'
         @($module.ExportedFunctions.Keys) | Should -Contain 'Get-IntuneFileVersion'
     }
 
@@ -19,5 +19,11 @@ Describe 'IntuneWinAppUtilGUI module' {
         $output = & powershell.exe -NoProfile -NonInteractive -Command "Import-Module '$manifestPath' -ErrorAction Stop; if (`$Error.Count) { `$Error | ForEach-Object { `$_.ToString() }; exit 1 }; (Get-Command -Module IntuneWinAppUtilGUI).Count" 2>&1
         $LASTEXITCODE | Should -Be 0 -Because ($output | Out-String)
         [int]($output | Select-Object -Last 1) | Should -Be 2
+    }
+
+    # Publish to Intune installs Microsoft.Graph.Authentication on demand; packaging must not need it.
+    It 'does not require Microsoft Graph modules' {
+        $data = Import-PowerShellDataFile -Path $manifestPath
+        @($data.RequiredModules | Where-Object { "$_" -like 'Microsoft.Graph*' }) | Should -BeNullOrEmpty
     }
 }

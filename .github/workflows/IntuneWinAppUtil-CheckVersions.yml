@@ -81,6 +81,8 @@ jobs:
       shell: pwsh
       run: |
         .\Tools\Update-IntuneWinAppUtilVersions.ps1 -OutputDirectory .\Tools
+        # Do not record the tag as processed when the list could not be built: the next run retries.
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
         # Save new version for next runs
         "${{ steps.get_latest.outputs.latest_tag }}" | Out-File -FilePath Tools/last_processed_version.txt -Encoding utf8
@@ -90,7 +92,7 @@ jobs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add Tools/IntuneWinAppUtilVersions.md Tools/last_processed_version.txt
+        git add Tools/IntuneWinAppUtilVersions.md Tools/IntuneWinAppUtilVersions.json Tools/last_processed_version.txt
         git diff --cached --quiet || git commit -m "Update IntuneWinAppUtil version list to ${{ steps.get_latest.outputs.latest_tag }}"
         git push
       shell: bash
