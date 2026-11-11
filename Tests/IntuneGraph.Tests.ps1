@@ -59,6 +59,17 @@ Describe 'Get-IwaWin32App' {
         Mock Invoke-IwaGraph { [pscustomobject]@{ value = @() } }
         @(Get-IwaWin32App).Count | Should -Be 0
     }
+    It 'matches wildcard characters in the search literally' {
+        Mock Invoke-IwaGraph {
+            [pscustomobject]@{ value = @(
+                [pscustomobject]@{ id = '1'; displayName = 'Contoso [x64] Agent' },
+                [pscustomobject]@{ id = '2'; displayName = 'Contoso x Agent' },
+                [pscustomobject]@{ id = '3'; displayName = 'Contoso * Tool' }
+            ) }
+        }
+        @(Get-IwaWin32App -Search '[x64]').id | Should -Be @('1')
+        @(Get-IwaWin32App -Search '*').id | Should -Be @('3')
+    }
     It 'reads one app by id' {
         Mock Invoke-IwaGraph { [pscustomobject]@{ id = 'abc' } }
         (Get-IwaWin32App -Id 'abc').id | Should -Be 'abc'
@@ -83,6 +94,15 @@ Describe 'Invoke-IwaBlobRequest' {
     It 'gives up after the last attempt' {
         Mock Invoke-WebRequest { throw 'busy' }
         { Invoke-IwaBlobRequest -Uri 'https://blob.example/c?sv=1' -Body 'x' } | Should -Throw '*after 3 attempts*'
+    }
+    It 'does not retry a request Azure Storage rejects' {
+        Mock Invoke-WebRequest {
+            $ex = New-Object System.Exception 'Forbidden'
+            $ex | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 403 })
+            throw $ex
+        }
+        { Invoke-IwaBlobRequest -Uri 'https://blob.example/c?sv=1' -Body 'x' } | Should -Throw 'Upload to Azure Storage failed: *'
+        Should -Invoke Invoke-WebRequest -Times 1
     }
     It 'passes the method, headers and content type to Invoke-WebRequest' {
         Mock Invoke-WebRequest { }
@@ -202,5 +222,36 @@ Describe 'Publish-IwaWin32AppContent' {
 
         Mock Invoke-IwaGraph -ParameterFilter { $Method -eq 'PATCH' } { throw 'BadRequest' }
         { Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 -ActivationAttempts 3 -ActivationRetrySeconds 0 } | Should -Throw '*BadRequest*'
+    }
+}
+
+Describe 'Test-IwaTransientHttpError' {
+    It 'retries network errors, timeouts, throttling and server errors only' {
+        $record = { param($status)
+            $ex = New-Object System.Exception 'failed'
+            if ($null -ne $status) { $ex | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = $status }) }
+            New-Object System.Management.Automation.ErrorRecord $ex, 'x', 'NotSpecified', $null
+        }
+        Test-IwaTransientHttpError -ErrorRecord (& $record $null) | Should -BeTrue
+        foreach ($status in 408, 429, 500, 503) { Test-IwaTransientHttpError -ErrorRecord (& $record $status) | Should -BeTrue -Because $status }
+        foreach ($status in 400, 403, 404) { Test-IwaTransientHttpError -ErrorRecord (& $record $status) | Should -BeFalse -Because $status }
+    }
+}
+
+Describe 'Graph module and account' {
+    It 'finds the Graph module only when it is installed' {
+        Mock Get-Module { [pscustomobject]@{ Name = 'Microsoft.Graph.Authentication' } } -ParameterFilter { $ListAvailable }
+        Test-IwaGraphModule | Should -BeTrue
+        Mock Get-Module { } -ParameterFilter { $ListAvailable }
+        Test-IwaGraphModule | Should -BeFalse
+    }
+    It 'returns the account only with the Intune apps scope' {
+        if (-not (Get-Command Get-MgContext -ErrorAction SilentlyContinue)) { function script:Get-MgContext { } }
+        Mock Get-MgContext { [pscustomobject]@{ Account = 'admin@contoso.com'; Scopes = @('User.Read', 'DeviceManagementApps.ReadWrite.All') } }
+        Get-IwaIntuneAccount | Should -Be 'admin@contoso.com'
+        Mock Get-MgContext { [pscustomobject]@{ Account = 'admin@contoso.com'; Scopes = @('User.Read') } }
+        Get-IwaIntuneAccount | Should -BeNullOrEmpty
+        Mock Get-MgContext { }
+        Get-IwaIntuneAccount | Should -BeNullOrEmpty
     }
 }

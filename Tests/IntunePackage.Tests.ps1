@@ -95,6 +95,16 @@ Describe 'Read-IwaIntuneWinPackage' {
         { Read-IwaIntuneWinPackage -Path $path } | Should -Throw '*is not a valid .intunewin package*'
     }
 
+    It 'rejects a Detection.xml that is not valid XML' {
+        $path = Join-Path $TestDrive 'broken-xml.intunewin'
+        New-TestIntuneWin -Path $path -DetectionXml '<ApplicationInfo><Name>setup.exe</Name>'
+        { Read-IwaIntuneWinPackage -Path $path } | Should -Throw '*is not a valid .intunewin package: its Detection.xml cannot be read.'
+    }
+    It 'rejects a Detection.xml without encryption data' {
+        $path = Join-Path $TestDrive 'no-encryption.intunewin'
+        New-TestIntuneWin -Path $path -DetectionXml '<?xml version="1.0" encoding="utf-8"?><ApplicationInfo><Name>setup.exe</Name></ApplicationInfo>'
+        { Read-IwaIntuneWinPackage -Path $path } | Should -Throw '*has no application or encryption data.'
+    }
     It 'rejects a zip without Detection.xml' {
         $path = Join-Path $TestDrive 'nodetection.intunewin'
         New-TestIntuneWin -Path $path -DetectionXml ''

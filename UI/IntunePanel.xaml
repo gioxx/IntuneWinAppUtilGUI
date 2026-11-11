@@ -5,10 +5,16 @@
       Visibility="Collapsed"
       Width="{Binding ActualWidth, ElementName=PackagePanel}"
       Height="{Binding ActualHeight, ElementName=PackagePanel}">
-        <DockPanel LastChildFill="True">
+        <!-- Header, form, footer in this order, so Tab reaches the form before the Upload button. -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
             <!-- Header: mode and account -->
-            <Border DockPanel.Dock="Top" Padding="14,12" CornerRadius="8"
+            <Border Grid.Row="0" Padding="14,12" CornerRadius="8"
                     Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
                 <StackPanel>
                     <Grid>
@@ -30,34 +36,8 @@
                 </StackPanel>
             </Border>
 
-            <!-- Footer: validation, status, progress, actions -->
-            <Border DockPanel.Dock="Bottom" Margin="0,10,0,0" Padding="14,12" CornerRadius="8"
-                    Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock Name="ValidationText" TextWrapping="Wrap" FontSize="12" Foreground="#9F2424" Margin="0,0,0,8" Visibility="Collapsed"/>
-                    <TextBlock Name="StatusText" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,8" Visibility="Collapsed"/>
-                    <StackPanel Name="ProgressPanel" Margin="0,0,0,8" Visibility="Collapsed">
-                        <TextBlock Name="ProgressText" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
-                        <ProgressBar Name="UploadProgress" Height="8" Margin="0,4,0,0" Minimum="0" Maximum="100"/>
-                    </StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock VerticalAlignment="Center" FontSize="12">
-                            <Hyperlink Name="OpenInIntune" IsEnabled="False" ToolTip="Open this app in the Intune admin center">Open in Intune</Hyperlink>
-                        </TextBlock>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <Button Name="RetryUploadButton" Content="Retry upload" Width="104" Margin="0,0,8,0" Visibility="Collapsed"/>
-                            <Button Name="UploadButton" Content="Upload" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="False"/>
-                        </StackPanel>
-                    </Grid>
-                </StackPanel>
-            </Border>
-
             <!-- Form -->
-            <Border Margin="0,10,0,0" CornerRadius="8"
+            <Border Grid.Row="1" Margin="0,10,0,0" CornerRadius="8"
                     Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,12">
                     <StackPanel Name="FormPanel">
@@ -91,38 +71,44 @@
                         <CheckBox Name="UploadContent" Content="Upload the package content" IsChecked="True" Margin="0,8,0,16"/>
 
                         <TextBlock Text="App information" Style="{StaticResource SectionTitleStyle}"/>
-                        <Label Content="Name *"/>
+                        <Label Content="Name *" Target="{Binding ElementName=DisplayName}"/>
                         <TextBox Name="DisplayName" Margin="0,4,0,8"/>
-                        <Label Content="Publisher *"/>
+                        <Label Content="Publisher *" Target="{Binding ElementName=Publisher}"/>
                         <TextBox Name="Publisher" Margin="0,4,0,8"/>
-                        <Label Content="Version"/>
+                        <Label Content="Version" Target="{Binding ElementName=DisplayVersion}"/>
                         <TextBox Name="DisplayVersion" Margin="0,4,0,8"/>
-                        <Label Content="Description *"/>
+                        <Label Content="Description *" Target="{Binding ElementName=Description}"/>
                         <TextBox Name="Description" Margin="0,4,0,16" Height="64" AcceptsReturn="True" TextWrapping="Wrap"
                                  VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto"/>
 
                         <TextBlock Text="Program" Style="{StaticResource SectionTitleStyle}"/>
-                        <Label Content="Install command *"/>
+                        <Label Content="Install command *" Target="{Binding ElementName=InstallCommandLine}"/>
                         <TextBox Name="InstallCommandLine" Margin="0,4,0,8"/>
-                        <Label Content="Uninstall command *"/>
+                        <Label Content="Uninstall command *" Target="{Binding ElementName=UninstallCommandLine}"/>
                         <TextBox Name="UninstallCommandLine" Margin="0,4,0,8"/>
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="12"/>
                                 <ColumnDefinition Width="150"/>
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
                             <StackPanel>
-                                <Label Content="Install behavior"/>
+                                <Label Content="Install behavior" Target="{Binding ElementName=RunAsAccount}"/>
                                 <ComboBox Name="RunAsAccount" Margin="0,4,0,0" MinHeight="31" VerticalContentAlignment="Center">
                                     <ComboBoxItem Content="System" Tag="system" IsSelected="True"/>
                                     <ComboBoxItem Content="User" Tag="user"/>
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <Label Content="Device restart behavior"/>
+                                <Label Content="Max run time (min) *" Target="{Binding ElementName=MaxRunTimeInMinutes}"/>
+                                <TextBox Name="MaxRunTimeInMinutes" Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0">
+                                <Label Content="Device restart behavior" Target="{Binding ElementName=DeviceRestartBehavior}"/>
                                 <ComboBox Name="DeviceRestartBehavior" Margin="0,4,0,0" MinHeight="31" VerticalContentAlignment="Center">
                                     <ComboBoxItem Content="Determine behavior based on return codes" Tag="basedOnReturnCode" IsSelected="True"/>
                                     <ComboBoxItem Content="No specific action" Tag="suppress"/>
@@ -130,14 +116,10 @@
                                     <ComboBoxItem Content="Intune will force a mandatory device restart" Tag="force"/>
                                 </ComboBox>
                             </StackPanel>
-                            <StackPanel Grid.Column="4">
-                                <Label Content="Max run time (min) *"/>
-                                <TextBox Name="MaxRunTimeInMinutes" Margin="0,4,0,0"/>
-                            </StackPanel>
                         </Grid>
 
                         <TextBlock Text="Requirements" Style="{StaticResource SectionTitleStyle}"/>
-                        <Label Content="Architecture *"/>
+                        <Label Content="Architecture *" Target="{Binding ElementName=ArchX64}"/>
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,8">
                             <CheckBox Name="ArchX64" Content="x64" Margin="0,0,16,0"/>
                             <CheckBox Name="ArchX86" Content="x86" Margin="0,0,16,0"/>
@@ -146,7 +128,7 @@
                             <TextBlock Name="ArchKeptText" Margin="16,0,0,0" VerticalAlignment="Center" FontSize="11"
                                        Foreground="{StaticResource MutedBrush}" Visibility="Collapsed"/>
                         </StackPanel>
-                        <Label Content="Minimum Windows release"/>
+                        <Label Content="Minimum Windows release" Target="{Binding ElementName=MinimumWindowsRelease}"/>
                         <ComboBox Name="MinimumWindowsRelease" Width="180" HorizontalAlignment="Left" Margin="0,4,0,16" MinHeight="31" VerticalContentAlignment="Center"/>
 
                         <TextBlock Text="Detection rules" Style="{StaticResource SectionTitleStyle}"/>
@@ -161,7 +143,7 @@
                         <Border Margin="0,8,0,0" Padding="10" CornerRadius="6"
                                 Background="{StaticResource SoftPanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
                             <StackPanel>
-                                <Label Content="New rule"/>
+                                <Label Content="New rule" Target="{Binding ElementName=NewRuleType}"/>
                                 <ComboBox Name="NewRuleType" Width="220" HorizontalAlignment="Left" Margin="0,4,0,8" MinHeight="31" VerticalContentAlignment="Center">
                                     <ComboBoxItem Content="MSI product code" Tag="MsiProductCode" IsSelected="True"/>
                                     <ComboBoxItem Content="File or folder" Tag="File"/>
@@ -170,14 +152,14 @@
                                 </ComboBox>
 
                                 <StackPanel Name="MsiRulePanel">
-                                    <Label Content="Product code"/>
+                                    <Label Content="Product code" Target="{Binding ElementName=RuleProductCode}"/>
                                     <TextBox Name="RuleProductCode" Margin="0,4,0,0" ToolTip="Format: {GUID}"/>
                                 </StackPanel>
 
                                 <StackPanel Name="FileRulePanel" Visibility="Collapsed">
-                                    <Label Content="Folder path"/>
+                                    <Label Content="Folder path" Target="{Binding ElementName=RuleFilePath}"/>
                                     <TextBox Name="RuleFilePath" Margin="0,4,0,8" ToolTip="For example: C:\Program Files\Contoso"/>
-                                    <Label Content="File or folder name"/>
+                                    <Label Content="File or folder name" Target="{Binding ElementName=RuleFileName}"/>
                                     <TextBox Name="RuleFileName" Margin="0,4,0,8"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -195,9 +177,9 @@
                                 </StackPanel>
 
                                 <StackPanel Name="RegistryRulePanel" Visibility="Collapsed">
-                                    <Label Content="Key path"/>
+                                    <Label Content="Key path" Target="{Binding ElementName=RuleKeyPath}"/>
                                     <TextBox Name="RuleKeyPath" Margin="0,4,0,8" ToolTip="For example: HKEY_LOCAL_MACHINE\SOFTWARE\Contoso"/>
-                                    <Label Content="Value name (empty = check the key)"/>
+                                    <Label Content="Value name (empty = check the key)" Target="{Binding ElementName=RuleValueName}"/>
                                     <TextBox Name="RuleValueName" Margin="0,4,0,8"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -216,7 +198,7 @@
                                 </StackPanel>
 
                                 <StackPanel Name="ScriptRulePanel" Visibility="Collapsed">
-                                    <Label Content="Script file (.ps1, max 200 KB)"/>
+                                    <Label Content="Script file (.ps1, max 200 KB)" Target="{Binding ElementName=RuleScriptPath}"/>
                                     <Grid Margin="0,4,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -236,5 +218,30 @@
                     </StackPanel>
                 </ScrollViewer>
             </Border>
-        </DockPanel>
+            <!-- Footer: validation, status, progress, actions -->
+            <Border Grid.Row="2" Margin="0,10,0,0" Padding="14,12" CornerRadius="8"
+                    Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Name="ValidationText" TextWrapping="Wrap" FontSize="12" Foreground="#9F2424" Margin="0,0,0,8" Visibility="Collapsed"/>
+                    <TextBlock Name="StatusText" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,8" Visibility="Collapsed"/>
+                    <StackPanel Name="ProgressPanel" Margin="0,0,0,8" Visibility="Collapsed">
+                        <TextBlock Name="ProgressText" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+                        <ProgressBar Name="UploadProgress" Height="8" Margin="0,4,0,0" Minimum="0" Maximum="100"/>
+                    </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" FontSize="12">
+                            <Hyperlink Name="OpenInIntune" IsEnabled="False" ToolTip="Open this app in the Intune admin center">Open in Intune</Hyperlink>
+                        </TextBlock>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button Name="RetryUploadButton" Content="Retry upload" Width="104" Margin="0,0,8,0" Visibility="Collapsed"/>
+                            <Button Name="UploadButton" Content="Upload" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="False"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
 </Grid>
