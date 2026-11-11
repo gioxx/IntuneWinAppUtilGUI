@@ -149,6 +149,9 @@
                         <CheckBox Name="ArchX64" Content="x64" Margin="0,0,16,0"/>
                         <CheckBox Name="ArchX86" Content="x86" Margin="0,0,16,0"/>
                         <CheckBox Name="ArchArm64" Content="arm64"/>
+                        <!-- Architectures of the loaded app that the checkboxes cannot show (neutral, arm): kept as they are -->
+                        <TextBlock Name="ArchKeptText" Margin="16,0,0,0" VerticalAlignment="Center" FontSize="11"
+                                   Foreground="{StaticResource MutedBrush}" Visibility="Collapsed"/>
                     </StackPanel>
                     <Label Content="Minimum Windows release"/>
                     <ComboBox Name="MinimumWindowsRelease" Width="180" HorizontalAlignment="Left" Margin="0,4,0,16" MinHeight="31" VerticalContentAlignment="Center"/>

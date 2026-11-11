@@ -277,6 +277,9 @@ function New-IwaWin32AppBody {
                 productName    = $Spec.DisplayName
                 publisher      = $Package.MsiInfo.Publisher
             }
+        } else {
+            # An EXE package replacing an MSI one: clear the MSI data left on the app.
+            $body.msiInformation = $null
         }
     }
     $body
