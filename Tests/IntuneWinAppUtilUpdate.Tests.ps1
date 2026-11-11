@@ -20,6 +20,13 @@ Describe 'IntuneWinAppUtil update check' {
         }
     }
 
+    Context 'Get-IntuneWinAppUtilReleaseZipUrl' {
+        It 'points to the ZIP of the advertised tag, not the master branch' {
+            Get-IntuneWinAppUtilReleaseZipUrl -Release 'v1.8.7' | Should -Be 'https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/archive/refs/tags/v1.8.7.zip'
+            Get-IntuneWinAppUtilReleaseZipUrl -Release '1.8.3' | Should -Be 'https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/archive/refs/tags/1.8.3.zip'
+        }
+    }
+
     Context 'Get-IntuneWinAppUtilLatestVersion' {
         It 'returns the latest release from the version list' {
             Mock Invoke-RestMethod { [pscustomobject]@{ latest = [pscustomobject]@{ release = 'v1.8.7'; fileVersion = '6.2509.50.0' } } }

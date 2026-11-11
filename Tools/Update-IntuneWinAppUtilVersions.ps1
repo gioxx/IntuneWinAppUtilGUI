@@ -98,10 +98,20 @@ foreach ($tag in $tags) {
 Write-Progress -Activity "Complete" -Completed
 
 # Newest first, by tag number (tags are not always prefixed with "v", so API order is not reliable).
-$results = @($results | Sort-Object -Descending -Property @{ Expression = {
+$tagVersion = {
+    param([string]$Name)
     $v = $null
-    if ([version]::TryParse(($_.Release -replace '^v', ''), [ref]$v)) { $v } else { [version]'0.0' }
-} })
+    if ([version]::TryParse(($Name -replace '^v', ''), [ref]$v)) { $v } else { [version]'0.0' }
+}
+$results = @($results | Sort-Object -Descending -Property @{ Expression = { & $tagVersion $_.Release } })
+
+# The newest tag must be in the list: if only it failed, an older release would be written as "latest",
+# and the workflow (which then records the newest tag as processed) would not regenerate the list again.
+$newestTag = ($tags | Sort-Object -Descending -Property @{ Expression = { & $tagVersion $_.name } } | Select-Object -First 1).name
+if ($newestTag -and -not @($results | Where-Object { $_.Release -eq $newestTag -and $_.FileVersion -ne 'Not found' }).Count) {
+    Write-Error "The newest release ($newestTag) could not be processed: the version list was not updated."
+    exit 1
+}
 
 $table = "| Release Version | FileVersion |`n"
 $table += "|-----------------|-------------|`n"
