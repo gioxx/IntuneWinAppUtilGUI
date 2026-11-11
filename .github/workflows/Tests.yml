@@ -13,19 +13,25 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
+    # The module supports both PowerShell 7 (pwsh) and Windows PowerShell 5.1 (powershell).
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [pwsh, powershell]
+    name: test (${{ matrix.shell }})
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Install Pester
-        shell: pwsh
         run: Install-Module -Name Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
 
       - name: Validate module manifest
-        shell: pwsh
         run: Test-ModuleManifest -Path ./IntuneWinAppUtilGUI.psd1
 
       - name: Run tests
-        shell: pwsh
         run: Invoke-Pester -Path ./Tests -CI
