@@ -38,6 +38,10 @@ Describe 'IntuneWinAppUtil update check' {
             Mock Invoke-RestMethod { [pscustomobject]@{ latest = $null } }
             { Get-IntuneWinAppUtilLatestVersion } | Should -Throw '*no valid latest version*'
         }
+        It 'throws when the latest version has no release tag' {
+            Mock Invoke-RestMethod { [pscustomobject]@{ latest = [pscustomobject]@{ release = ' '; fileVersion = '6.2509.50.0' } } }
+            { Get-IntuneWinAppUtilLatestVersion } | Should -Throw '*no release*'
+        }
         It 'reads the JSON published in Tools' {
             $json = Join-Path $PSScriptRoot '..\Tools\IntuneWinAppUtilVersions.json'
             Mock Invoke-RestMethod { Get-Content -LiteralPath $json -Raw | ConvertFrom-Json }
