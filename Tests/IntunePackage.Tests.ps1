@@ -65,6 +65,7 @@ Describe 'Read-IwaIntuneWinPackage' {
         $p.UnencryptedSize | Should -Be 2048
         $p.EncryptedSize | Should -Be 10
         $p.ContentEntry | Should -Be 'IntuneWinPackage/Contents/IntunePackage.intunewin'
+        $p.FileName | Should -Be 'IntunePackage.intunewin'
         $p.EncryptionInfo.encryptionKey | Should -Be 'a2V5'
         $p.EncryptionInfo.profileIdentifier | Should -Be 'ProfileVersion1'
         $p.EncryptionInfo.fileDigestAlgorithm | Should -Be 'SHA256'

@@ -3,7 +3,7 @@ BeforeAll {
 
     $exePackage = [pscustomobject]@{ Path = 'C:\Out\Contoso Tool_1.0.intunewin'; Name = 'setup.exe'; SetupFile = 'setup.exe'; MsiInfo = $null }
     $msiPackage = [pscustomobject]@{
-        Path = 'C:\Out\contoso-tool.intunewin'; Name = 'Contoso Tool'; SetupFile = 'contoso-tool.msi'
+        Path = 'C:\Out\contoso-tool.intunewin'; Name = 'Contoso Tool'; SetupFile = 'contoso-tool.msi'; FileName = 'IntunePackage.intunewin'
         MsiInfo = [pscustomobject]@{
             ProductCode = '{11111111-2222-3333-4444-555555555555}'; ProductVersion = '2.1.0'
             UpgradeCode = '{66666666-7777-8888-9999-000000000000}'; Publisher = 'Contoso Ltd'
@@ -146,7 +146,8 @@ Describe 'New-IwaWin32AppBody' {
         $body.returnCodes[0].returnCode | Should -Be 0
         $body.returnCodes[0].type | Should -Be 'success'
         @($body.rules).Count | Should -Be 1
-        $body.fileName | Should -Be 'contoso-tool.intunewin'
+        # The embedded content name from Detection.xml, not the (renamed) outer package file
+        $body.fileName | Should -Be 'IntunePackage.intunewin'
         $body.setupFilePath | Should -Be 'contoso-tool.msi'
         $body.msiInformation.productCode | Should -Be '{11111111-2222-3333-4444-555555555555}'
         $body.msiInformation.packageType | Should -Be 'perMachine'

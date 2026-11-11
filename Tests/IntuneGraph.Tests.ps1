@@ -136,7 +136,7 @@ Describe 'Publish-IwaWin32AppContent' {
         }
         $content = Join-Path $TestDrive 'IntunePackage.intunewin'
         [System.IO.File]::WriteAllBytes($content, [byte[]](1..13))
-        $package = [pscustomobject]@{ UnencryptedSize = 99; EncryptionInfo = [ordered]@{ encryptionKey = 'a2V5' } }
+        $package = [pscustomobject]@{ FileName = 'IntunePackage.intunewin'; UnencryptedSize = 99; EncryptionInfo = [ordered]@{ encryptionKey = 'a2V5' } }
     }
 
     It 'uploads in blocks, commits, then sets the committed content version' {
@@ -157,7 +157,7 @@ Describe 'Publish-IwaWin32AppContent' {
         $blocklistCall = $script:calls.IndexOf((@($script:calls | Where-Object { $_ -like 'BLOB*comp=blocklist' }))[0])
         $blocklistCall | Should -BeGreaterOrEqual 0
         $blocklistCall | Should -BeLessThan $commit
-        Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'POST' -and $Uri -like '*/files' -and $Body.size -eq 99 -and $Body.sizeEncrypted -eq 13 }
+        Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'POST' -and $Uri -like '*/files' -and $Body.name -eq 'IntunePackage.intunewin' -and $Body.size -eq 99 -and $Body.sizeEncrypted -eq 13 }
         Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'POST' -and $Uri -like '*/commit' -and $Body.fileEncryptionInfo.encryptionKey -eq 'a2V5' }
         Should -Invoke Invoke-IwaGraph -Times 1 -ParameterFilter { $Method -eq 'PATCH' -and $Body.committedContentVersion -eq 'cv1' }
     }
