@@ -69,6 +69,21 @@ Describe 'Get-IwaWindowsReleaseLabel' {
     }
 }
 
+Describe 'Read-IwaScriptFile' {
+    It 'keeps the exact bytes of a UTF-8 script with BOM and non-ASCII text' {
+        $path = Join-Path $TestDrive 'detect-bom.ps1'
+        $bytes = [byte[]](0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::UTF8.GetBytes("Write-Output 'caff$([char]0xE8)'")
+        [System.IO.File]::WriteAllBytes($path, $bytes)
+        $rule = New-IwaDetectionRule -Type Script -ScriptContent (Read-IwaScriptFile -Path $path)
+        (ConvertTo-IwaGraphRule -Rule $rule).scriptContent | Should -Be ([Convert]::ToBase64String($bytes))
+    }
+    It 'rejects a UTF-16 script' {
+        $path = Join-Path $TestDrive 'detect-utf16.ps1'
+        [System.IO.File]::WriteAllText($path, 'exit 0', [System.Text.Encoding]::Unicode)
+        { Read-IwaScriptFile -Path $path } | Should -Throw '*UTF-8*'
+    }
+}
+
 Describe 'New-IwaDetectionRule' {
     It 'accepts an MSI product code' {
         (New-IwaDetectionRule -Type MsiProductCode -ProductCode '{11111111-2222-3333-4444-555555555555}').ProductCode | Should -Be '{11111111-2222-3333-4444-555555555555}'

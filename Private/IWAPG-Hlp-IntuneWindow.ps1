@@ -517,7 +517,7 @@ function Show-IwaIntuneWindow {
                 'Script' {
                     $scriptPath = $ui.RuleScriptPath.Text.Trim()
                     if (-not $scriptPath -or -not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { throw 'Select an existing .ps1 detection script.' }
-                    $ruleArgs.ScriptContent = Get-Content -LiteralPath $scriptPath -Raw
+                    $ruleArgs.ScriptContent = Read-IwaScriptFile -Path $scriptPath
                     $ruleArgs.RunAs32Bit = [bool]$ui.RuleScriptRunAs32.IsChecked
                     $ruleArgs.EnforceSignatureCheck = [bool]$ui.RuleScriptSignature.IsChecked
                 }

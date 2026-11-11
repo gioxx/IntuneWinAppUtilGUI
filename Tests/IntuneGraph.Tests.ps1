@@ -193,4 +193,14 @@ Describe 'Publish-IwaWin32AppContent' {
             $Body.committedContentVersion -eq 'cv1' -and $Body['@odata.type'] -eq '#microsoft.graph.win32LobApp'
         }
     }
+
+    It 'retries the activation PATCH while Intune is not ready, then gives up' {
+        $script:patches = 0
+        Mock Invoke-IwaGraph -ParameterFilter { $Method -eq 'PATCH' } { $script:patches++; if ($script:patches -lt 2) { throw 'BadRequest' } }
+        Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 -ActivationRetrySeconds 0 | Should -Be 'cv1'
+        $script:patches | Should -Be 2
+
+        Mock Invoke-IwaGraph -ParameterFilter { $Method -eq 'PATCH' } { throw 'BadRequest' }
+        { Publish-IwaWin32AppContent -AppId 'app1' -Package $package -ContentFile $content -ChunkSizeBytes 5 -ActivationAttempts 3 -ActivationRetrySeconds 0 } | Should -Throw '*BadRequest*'
+    }
 }
