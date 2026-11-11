@@ -212,7 +212,14 @@
                     </StackPanel>
 
                     <Border Grid.Column="2" Padding="10,5" CornerRadius="12" Background="#1F000000" BorderBrush="#2DFFFFFF" BorderThickness="1" VerticalAlignment="Center">
-                        <TextBlock Text="Package - Validate - Export" Foreground="#EAF6FF" FontSize="11" FontWeight="SemiBold"/>
+                        <!-- What the tool does, at a glance: build the .intunewin, then publish it (Segoe MDL2: Package, Cloud) -->
+                        <StackPanel Orientation="Horizontal" TextElement.Foreground="#EAF6FF" TextElement.FontSize="11.5">
+                            <TextBlock Text="&#xE7B8;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Package" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#x00B7;" Margin="8,0" Opacity="0.7" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE753;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Publish to Intune" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Border>
                 </Grid>
             </Border>
@@ -350,7 +357,9 @@
                                        TextAlignment="Left">
                                 <Run Name="ToolVersionText" Text="IntuneWinAppUtil version: (not detected)"/>
                                 <Run Text=" (" />
-                                <Hyperlink NavigateUri="https://github.com/gioxx/IntuneWinAppUtilGUI/blob/main/Tools/IntuneWinAppUtilVersions.md" ToolTip="Open versions list page">Version history</Hyperlink>
+                                <Hyperlink Name="CheckToolUpdate" ToolTip="Check whether a newer IntuneWinAppUtil.exe is available">Check for updates</Hyperlink>
+                                <Run Text=" · " />
+                                <Hyperlink NavigateUri="https://kb.gioxx.org/Projects/intunewinapputilgui/tool-versions" ToolTip="Every IntuneWinAppUtil.exe release and its FileVersion">Version history</Hyperlink>
                                 <Run Text=")" />
                             </TextBlock>
 
@@ -553,6 +562,124 @@
                     <Button Name="ResultUploadIntune" Content="Upload to Intune..." Width="140" Margin="0,0,8,0"
                             ToolTip="Create or update a Win32 app in Intune with this package"/>
                     <Button Name="ResultClose" Content="Close" Width="104"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Border>
+
+    <!-- Help overlay: command-line switches and keyboard shortcuts (Esc or Enter closes it) -->
+    <Border Name="HelpOverlay"
+            KeyboardNavigation.TabNavigation="Cycle"
+            Margin="14"
+            CornerRadius="10"
+            Background="#B30F172A"
+            Visibility="Collapsed">
+        <Border Width="580"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="22,20"
+                CornerRadius="10"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.30" Color="#0F172A"/>
+            </Border.Effect>
+            <Border.Resources>
+                <Style x:Key="HelpHeading" TargetType="TextBlock">
+                    <Setter Property="FontSize" Value="13"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                    <Setter Property="Foreground" Value="{StaticResource InkBrush}"/>
+                    <Setter Property="Margin" Value="0,14,0,6"/>
+                </Style>
+                <Style x:Key="HelpKey" TargetType="Border">
+                    <Setter Property="Background" Value="{StaticResource SoftPanelBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="CornerRadius" Value="4"/>
+                    <Setter Property="Padding" Value="6,2"/>
+                    <Setter Property="Margin" Value="0,0,12,6"/>
+                    <Setter Property="VerticalAlignment" Value="Top"/>
+                </Style>
+                <Style x:Key="HelpCode" TargetType="TextBlock">
+                    <Setter Property="FontFamily" Value="Consolas"/>
+                    <Setter Property="FontSize" Value="12"/>
+                    <Setter Property="Foreground" Value="{StaticResource InkBrush}"/>
+                </Style>
+                <Style x:Key="HelpText" TargetType="TextBlock">
+                    <Setter Property="TextWrapping" Value="Wrap"/>
+                    <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                    <Setter Property="Margin" Value="0,0,0,6"/>
+                </Style>
+            </Border.Resources>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{StaticResource AccentBrush}" VerticalAlignment="Center">
+                        <TextBlock Text="?" Foreground="#FFFFFF" FontSize="15" FontWeight="Bold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="Help"
+                               Margin="10,0,0,0"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource InkBrush}"/>
+                </StackPanel>
+
+                <TextBlock Text="Command-line switches" Style="{StaticResource HelpHeading}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Style="{StaticResource HelpKey}"><TextBlock Text="-ShowVersion" Style="{StaticResource HelpCode}"/></Border>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Style="{StaticResource HelpText}"
+                               Text="Shows the installed module version and the latest version on the PowerShell Gallery in the header banner."/>
+                    <Border Grid.Row="1" Style="{StaticResource HelpKey}"><TextBlock Text="-ForceUpdateBanner" Style="{StaticResource HelpCode}"/></Border>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource HelpText}"
+                               Text="Shows a test &quot;update available&quot; banner."/>
+                    <Border Grid.Row="2" Style="{StaticResource HelpKey}"><TextBlock Text="-Diag" Style="{StaticResource HelpCode}"/></Border>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource HelpText}"
+                               Text="Writes start-up and shutdown diagnostics and a detailed log of every packaging run, with the tool output and any locked files, to %APPDATA%\IntuneWinAppUtilGUI\logs."/>
+                    <Border Grid.Row="3" Style="{StaticResource HelpKey}"><TextBlock Text="-Verbose, -Debug" Style="{StaticResource HelpCode}"/></Border>
+                    <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource HelpText}"
+                               Text="Standard PowerShell switches, kept when the GUI relaunches itself in STA mode."/>
+                </Grid>
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,2,0,0">
+                    <Run Text="Use them with"/>
+                    <Run Text="Show-IntuneWinAppUtilGUI" FontFamily="Consolas" Foreground="{StaticResource InkBrush}"/><Run Text=", for example"/>
+                    <Run Text="Show-IntuneWinAppUtilGUI -Diag" FontFamily="Consolas" Foreground="{StaticResource InkBrush}"/><Run Text="."/>
+                </TextBlock>
+
+                <TextBlock Text="Keyboard shortcuts" Style="{StaticResource HelpHeading}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Style="{StaticResource HelpKey}"><TextBlock Text="Enter" Style="{StaticResource HelpCode}"/></Border>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Style="{StaticResource HelpText}" Text="Create the package."/>
+                    <Border Grid.Row="1" Style="{StaticResource HelpKey}"><TextBlock Text="Esc" Style="{StaticResource HelpCode}"/></Border>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource HelpText}" Text="Close the open panel, or ask before closing the window."/>
+                </Grid>
+
+                <TextBlock Style="{StaticResource HelpText}" Margin="0,12,0,0">
+                    <Run Text="Full documentation:"/>
+                    <Hyperlink NavigateUri="https://kb.gioxx.org/Projects/intunewinapputilgui">kb.gioxx.org/Projects/intunewinapputilgui</Hyperlink>
+                </TextBlock>
+
+                <StackPanel Margin="0,14,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Name="HelpClose" Content="Close" Width="104"/>
                 </StackPanel>
             </StackPanel>
         </Border>
