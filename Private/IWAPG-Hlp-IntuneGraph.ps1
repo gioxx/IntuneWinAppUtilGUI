@@ -105,6 +105,20 @@ function Get-IwaIntunePortalUrl {
     "https://intune.microsoft.com/#view/Microsoft_Intune_Apps/SettingsMenu/~/0/appId/$AppId"
 }
 
+function Test-IwaTransientHttpError {
+    <#
+    .SYNOPSIS
+    True for failures worth retrying: no response (network), 408, 429 and 5xx. 400 or 403 fail the same way again.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$ErrorRecord)
+
+    $response = $ErrorRecord.Exception.Response
+    if (-not $response) { return $true }
+    $status = [int]$response.StatusCode
+    $status -eq 408 -or $status -eq 429 -or $status -ge 500
+}
+
 function Invoke-IwaBlobRequest {
     <#
     .SYNOPSIS
@@ -128,6 +142,7 @@ function Invoke-IwaBlobRequest {
             Invoke-WebRequest @params | Out-Null
             return
         } catch {
+            if (-not (Test-IwaTransientHttpError -ErrorRecord $_)) { throw "Upload to Azure Storage failed: $($_.Exception.Message)" }
             if ($attempt -ge $MaxAttempts) { throw "Upload to Azure Storage failed after $MaxAttempts attempts: $($_.Exception.Message)" }
             Start-Sleep -Seconds (2 * $attempt)
         }

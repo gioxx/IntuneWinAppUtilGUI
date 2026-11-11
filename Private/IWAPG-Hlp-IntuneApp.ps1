@@ -251,6 +251,9 @@ function New-IwaWin32AppBody {
     } else {
         $body.applicableArchitectures = $archList
     }
+    # Rules not touched since the app was read from Intune: not sent, so Intune keeps them exactly
+    # (a script rule can come back from Graph without its content and could not be sent back whole).
+    if ($ForUpdate -and $Spec.KeepIntuneRules -eq $true) { $body.Remove('rules') }
     if (-not $ForUpdate) {
         # The same default return codes the Intune portal adds to a new Win32 app.
         $body.returnCodes = @(
@@ -358,8 +361,8 @@ function Test-IwaWin32AppSpec {
             & $add 'Rules' 'A detection script is larger than 200 KB.'
         }
     }
-    if (@($rules | Where-Object { $_.Type -eq 'Raw' -and $_.Graph.'@odata.type' -eq '#microsoft.graph.win32LobAppPowerShellScriptRule' -and -not $_.Graph.scriptContent }).Count) {
-        & $add 'Rules' 'A script rule of this app came back from Intune without its content. Edit this app''s script rules in the portal ("Open in Intune").'
+    if ($Spec.KeepIntuneRules -ne $true -and @($rules | Where-Object { $_.Type -eq 'Raw' -and $_.Graph.'@odata.type' -eq '#microsoft.graph.win32LobAppPowerShellScriptRule' -and -not $_.Graph.scriptContent }).Count) {
+        & $add 'Rules' 'A script rule of this app came back from Intune without its content, so the rules cannot be changed here. Select the app again to keep its rules as they are, or edit them in the portal ("Open in Intune").'
     }
     if ($UploadContent -and -not $Package) { & $add 'PackagePath' 'Select a valid .intunewin package to upload.' }
 
