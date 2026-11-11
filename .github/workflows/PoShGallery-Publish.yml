@@ -1,17 +1,17 @@
 name: Publish to PowerShell Gallery
 
 # Publishes when a GitHub release is published, from the commit its tag points to.
-# Drafts and pre-releases publish nothing, so a release can be prepared and reviewed first.
+# `released` fires for a stable release and for a pre-release promoted to stable;
+# drafts and pre-releases publish nothing, so a release can be prepared and reviewed first.
 on:
   release:
-    types: [published]
+    types: [released]
 
 permissions:
   contents: read
 
 jobs:
   POShGallery-Publish:
-    if: ${{ !github.event.release.prerelease }}
     runs-on: windows-latest
 
     steps:
