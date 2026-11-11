@@ -117,7 +117,7 @@ function Initialize-IwaIntunePanel {
         Package = $null; DisplayVersion = $null; DisplayName = $null; Publisher = $null; AppId = $null; Account = $null; Activated = $false
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; LoadingIndex = -1; ClientId = ''; TenantId = ''; ConfigWarning = $null; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; LoadingIndex = -1; ClientId = ''; TenantId = ''; ConfigWarning = $null; ConfigClientId = ''; ConfigTenantId = ''; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -622,8 +622,9 @@ function Initialize-IwaIntunePanel {
     # --- Connection settings: Microsoft's app or a custom app registration (#30) --------------------
     $showConnection = {
         if ($state.Busy -or $state.Waiting) { return }
-        $ui.ConnectionClientId.Text = $state.ClientId
-        $ui.ConnectionTenantId.Text = $state.TenantId
+        # After an invalid config.json, show what it holds, so the user sees what to fix.
+        $ui.ConnectionClientId.Text = if ($state.ConfigWarning) { $state.ConfigClientId } else { $state.ClientId }
+        $ui.ConnectionTenantId.Text = if ($state.ConfigWarning) { $state.ConfigTenantId } else { $state.TenantId }
         $ui.ConnectionError.Visibility = $collapsed
         $ui.ConnectionOverlay.Visibility = $visible
         $null = $ui.ConnectionClientId.Focus()
@@ -639,8 +640,9 @@ function Initialize-IwaIntunePanel {
         $canonical = ConvertTo-IwaConnectionSetting -ClientId $ui.ConnectionClientId.Text -TenantId $ui.ConnectionTenantId.Text
         $clientId = $canonical.ClientId
         $tenantId = $canonical.TenantId
+        # Saving over an invalid config.json is a change even when the values in use (none) stay the same.
+        $changed = ($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId) -or [bool]$state.ConfigWarning
         $state.ConfigWarning = $null
-        $changed = ($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId)
         $state.ClientId = $clientId
         $state.TenantId = $tenantId
         & $hideConnection
@@ -650,7 +652,7 @@ function Initialize-IwaIntunePanel {
         # $saveConfig belongs to Show-IntuneWinAppUtilGUI, which dot-sources this function.
         $saveError = $null
         try { & $saveConfig } catch { $saveError = $_.Exception.Message; Write-IwaDebugLog "Saving config.json failed: $saveError" }
-        if ($state.Activated) { & $refreshAccount }
+        if ($state.Activated) { & $refreshAccount } else { $ui.GraphStatusText.Visibility = $collapsed }
         $who = if ($clientId) { 'your app registration' } else { 'Microsoft''s app' }
         if ($saveError) { & $showStatus 'error' "The next sign-in uses $who, but the setting could not be saved for the next start: $saveError" }
         else { & $showStatus 'success' "Connection settings saved: sign in to use $who." }
@@ -673,6 +675,7 @@ function Initialize-IwaIntunePanel {
         if ($problem) {
             # Hand-edited config.json: say so on the tab instead of dropping the values without a word.
             Write-IwaDebugLog "Ignoring the app registration in config.json: $problem"
+            $state.ConfigClientId = "$ClientId"; $state.ConfigTenantId = "$TenantId"
             $state.ConfigWarning = "The app registration in config.json was ignored: $problem Open Connection settings to fix it; until then Microsoft's app is used."
             $ui.GraphStatusText.Text = $state.ConfigWarning
             $ui.GraphStatusText.Visibility = $visible
