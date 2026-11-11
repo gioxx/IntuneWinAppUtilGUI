@@ -111,7 +111,7 @@ function Initialize-IwaIntunePanel {
         Package = $null; DisplayVersion = $null; DisplayName = $null; Publisher = $null; AppId = $null; Account = $null; Activated = $false
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        ArchitectureProperty = ''; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; ArchitectureCheck = $true; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -194,6 +194,7 @@ function Initialize-IwaIntunePanel {
             DeviceRestartBehavior = [string]$ui.DeviceRestartBehavior.SelectedItem.Tag
             MaxRunTimeInMinutes   = $ui.MaxRunTimeInMinutes.Text.Trim()
             ArchitectureProperty  = $state.ArchitectureProperty
+            ArchitectureCheck     = $state.ArchitectureCheck
             Architectures         = $arch
             MinimumWindowsRelease = [string]$ui.MinimumWindowsRelease.SelectedItem.Tag
             Rules                 = @($state.Rules)
@@ -245,14 +246,23 @@ function Initialize-IwaIntunePanel {
             $ui.ArchX86.IsChecked = $arch -contains 'x86'
             $ui.ArchArm64.IsChecked = $arch -contains 'arm64'
             $state.ExtraArchitectures = @($arch | Where-Object { $_ -and $_ -notin @('x64', 'x86', 'arm64') })
-            $ui.ArchKeptText.Text = 'Also kept: ' + ($state.ExtraArchitectures -join ', ')
-            $ui.ArchKeptText.Visibility = if ($state.ExtraArchitectures.Count) { $visible } else { $collapsed }
+            # Only an app read from Intune can have no architecture check; new apps always check it.
+            $state.ArchitectureCheck = ($Spec.ArchitectureCheck -ne $false)
+            $ui.ArchKeptText.Text = if (-not $state.ArchitectureCheck) { 'Not checked in Intune: leave all unchecked to keep it so.' }
+                                    else { 'Also kept: ' + ($state.ExtraArchitectures -join ', ') }
+            $ui.ArchKeptText.Visibility = if ($state.ExtraArchitectures.Count -or -not $state.ArchitectureCheck) { $visible } else { $collapsed }
             $state.Rules.Clear()
             foreach ($rule in @($Spec.Rules | Where-Object { $_ })) { [void]$state.Rules.Add($rule) }
         } finally {
             $state.Loading = $false
         }
         & $refreshRules
+    }
+    # Updating an app with new content: the version is the package's, not the one of the app in Intune.
+    $applyPackageVersion = {
+        if (-not ($ui.ModeUpdate.IsChecked -and $ui.UploadContent.IsChecked -and $state.Package)) { return }
+        $version = (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion).DisplayVersion
+        if ($version) { $ui.DisplayVersion.Text = $version }
     }
     $loadPackage = {
         param([string]$Path)
@@ -267,6 +277,7 @@ function Initialize-IwaIntunePanel {
         if ($state.Package -and $ui.ModeNew.IsChecked) {
             & $setForm (Get-IwaWin32AppDefault -Package $state.Package -DisplayVersion $state.DisplayVersion -DisplayName $state.DisplayName -Publisher $state.Publisher)
         } else {
+            if ($state.AppId) { & $applyPackageVersion }
             & $validate
         }
     }
@@ -474,6 +485,7 @@ function Initialize-IwaIntunePanel {
         $ui.OpenInIntune.IsEnabled = $true
         $ui.RetryUploadButton.Visibility = $collapsed
         & $setForm (ConvertFrom-IwaGraphApp -App $state.LoadedApp)
+        & $applyPackageVersion
         & $showStatus 'success' ('Loaded "{0}". Change what you need, then select Upload.' -f $state.LoadedApp.displayName)
     })
 
@@ -541,9 +553,10 @@ function Initialize-IwaIntunePanel {
     foreach ($name in @('DisplayName', 'Publisher', 'DisplayVersion', 'Description', 'InstallCommandLine', 'UninstallCommandLine', 'MaxRunTimeInMinutes', 'PackagePath')) {
         $ui[$name].Add_TextChanged({ & $validate })
     }
-    foreach ($name in @('ArchX64', 'ArchX86', 'ArchArm64', 'UploadContent')) {
+    foreach ($name in @('ArchX64', 'ArchX86', 'ArchArm64')) {
         $ui[$name].Add_Click({ & $validate })
     }
+    $ui.UploadContent.Add_Click({ & $applyPackageVersion; & $validate })
 
     $ui.UploadButton.Add_Click({
         $package = if ($ui.UploadContent.IsChecked) { $state.Package } else { $null }
