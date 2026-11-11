@@ -58,7 +58,7 @@ function Invoke-DownloadIntuneTool {
     .DESCRIPTION
     - Forces TLS 1.2 for GitHub downloads.
     - Creates (or ensures) the bin directory under $env:APPDATA\IntuneWinAppUtilGUI\bin.
-    - Removes any stale IntuneWinAppUtil.exe in the bin directory.
+    - Replaces the cached IntuneWinAppUtil.exe only after a successful download and extraction.
     - Downloads the repository master ZIP, extracts it to a unique temp folder,
       locates IntuneWinAppUtil.exe, and copies it into the bin directory.
     - Cleans up all temp files/folders in a finally block.
@@ -90,9 +90,9 @@ function Invoke-DownloadIntuneTool {
     $tempDir  = Join-Path $env:TEMP ("IntuneExtract-{0}" -f ([guid]::NewGuid()))
 
     try {
-        # Prepare target folder and clean stale exe
+        # Prepare target folder. The cached exe stays until the new one is extracted (Copy-Item -Force
+        # below replaces it): a failed download must not leave the user without a working tool.
         New-Item -ItemType Directory -Path $binDir -Force | Out-Null
-        if (Test-Path $exePath) { Remove-Item $exePath -Force -ErrorAction SilentlyContinue }
 
         # Download
         Invoke-WebRequest -Uri $RepoZipUrl -OutFile $tempZip -UseBasicParsing -ErrorAction Stop
