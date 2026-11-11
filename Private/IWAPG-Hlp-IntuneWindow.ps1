@@ -10,7 +10,7 @@ function Get-IwaIntuneWindowControlName {
         'PackagePath', 'BrowsePackage', 'UploadContent',
         'DisplayName', 'Publisher', 'DisplayVersion', 'Description',
         'InstallCommandLine', 'UninstallCommandLine', 'RunAsAccount', 'DeviceRestartBehavior', 'MaxRunTimeInMinutes',
-        'ArchX64', 'ArchX86', 'ArchArm64', 'MinimumWindowsRelease',
+        'ArchX64', 'ArchX86', 'ArchArm64', 'ArchKeptText', 'MinimumWindowsRelease',
         'RulesList', 'RemoveRuleButton', 'NewRuleType', 'MsiRulePanel', 'RuleProductCode',
         'FileRulePanel', 'RuleFilePath', 'RuleFileName', 'RuleFileOperation', 'RuleFileValue', 'RuleFile32Bit',
         'RegistryRulePanel', 'RuleKeyPath', 'RuleValueName', 'RuleRegOperation', 'RuleRegValue', 'RuleReg32Bit',
@@ -113,7 +113,7 @@ function Show-IwaIntuneWindow {
         Package = $null; DisplayVersion = $DisplayVersion; DisplayName = $DisplayName; Publisher = $Publisher; AppId = $null; Account = $null
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        ArchitectureProperty = ''; Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -184,6 +184,7 @@ function Show-IwaIntuneWindow {
         if ($ui.ArchX64.IsChecked) { $arch += 'x64' }
         if ($ui.ArchX86.IsChecked) { $arch += 'x86' }
         if ($ui.ArchArm64.IsChecked) { $arch += 'arm64' }
+        $arch += @($state.ExtraArchitectures)
         [ordered]@{
             DisplayName           = $ui.DisplayName.Text.Trim()
             Publisher             = $ui.Publisher.Text.Trim()
@@ -244,6 +245,9 @@ function Show-IwaIntuneWindow {
             $ui.ArchX64.IsChecked = $arch -contains 'x64'
             $ui.ArchX86.IsChecked = $arch -contains 'x86'
             $ui.ArchArm64.IsChecked = $arch -contains 'arm64'
+            $state.ExtraArchitectures = @($arch | Where-Object { $_ -and $_ -notin @('x64', 'x86', 'arm64') })
+            $ui.ArchKeptText.Text = 'Also kept: ' + ($state.ExtraArchitectures -join ', ')
+            $ui.ArchKeptText.Visibility = if ($state.ExtraArchitectures.Count) { $visible } else { $collapsed }
             $state.Rules.Clear()
             foreach ($rule in @($Spec.Rules | Where-Object { $_ })) { [void]$state.Rules.Add($rule) }
         } finally {

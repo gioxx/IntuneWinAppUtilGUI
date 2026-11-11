@@ -159,6 +159,11 @@ Describe 'New-IwaWin32AppBody' {
         $body.Contains('fileName') | Should -BeFalse
         $body.Contains('msiInformation') | Should -BeFalse
     }
+    It 'clears msiInformation when an EXE package replaces the content' {
+        $body = New-IwaWin32AppBody -Spec (New-ValidSpec) -Package $exePackage -ForUpdate
+        $body.Contains('msiInformation') | Should -BeTrue
+        $body.msiInformation | Should -BeNullOrEmpty
+    }
     It 'serializes to JSON with the rules as an array' {
         $json = New-IwaWin32AppBody -Spec (New-ValidSpec) -ForUpdate | ConvertTo-Json -Depth 10
         ($json | ConvertFrom-Json).rules.Count | Should -Be 1
@@ -196,6 +201,12 @@ Describe 'ConvertFrom-IwaGraphApp' {
         $body = New-IwaWin32AppBody -Spec (ConvertFrom-IwaGraphApp -App $app) -ForUpdate
         @($body.rules).Count | Should -Be 3
         $body.rules[2] | Should -Be $app.rules[2]
+    }
+    It 'keeps architectures the form has no checkbox for (neutral, arm)' {
+        $neutral = [pscustomobject]@{ displayName = 'Contoso Tool'; applicableArchitectures = 'neutral,x64'; rules = @() }
+        $spec = ConvertFrom-IwaGraphApp -App $neutral
+        $spec.Architectures | Should -Be @('neutral', 'x64')
+        (New-IwaWin32AppBody -Spec $spec -ForUpdate).applicableArchitectures | Should -Be 'neutral,x64'
     }
     It 'writes allowedArchitectures back for apps created in the portal' {
         $portal = [pscustomobject]@{
