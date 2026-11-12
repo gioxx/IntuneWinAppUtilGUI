@@ -315,9 +315,10 @@ function Initialize-IwaIntunePanel {
         $ui.AccountText.Text = if ($state.Account) { [string]$state.Account } else { 'Not signed in' }
         if ($state.Account) {
             # Initials of the account name, or the person glyph when signed out.
-            $letters = ([string]$state.Account -split '@')[0] -replace '[^A-Za-z0-9]', ''
+            $parts = @((([string]$state.Account -split '@')[0] -split '[._-]+') | ForEach-Object { $_ -replace '[^\p{L}\p{N}]', '' } | Where-Object { $_ })
+            $initials = if ($parts.Count -ge 2) { "$($parts[0][0])$($parts[1][0])" } elseif ($parts.Count) { $parts[0].Substring(0, [Math]::Min(2, $parts[0].Length)) } else { '?' }
             $ui.AccountAvatarText.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI'
-            $ui.AccountAvatarText.Text = if ($letters) { $letters.Substring(0, [Math]::Min(2, $letters.Length)).ToUpperInvariant() } else { '?' }
+            $ui.AccountAvatarText.Text = $initials.ToUpperInvariant()
         } else {
             $ui.AccountAvatarText.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe MDL2 Assets'
             $ui.AccountAvatarText.Text = [string][char]0xE77B
@@ -670,6 +671,7 @@ function Initialize-IwaIntunePanel {
         # Saving over an invalid config.json is a change even when the values in use (none) stay the same.
         $useApp = [bool]$clientId
         $changed = ($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId) -or ($useApp -ne $state.UseAppRegistration) -or [bool]$state.ConfigWarning
+        $appChanged = ($useApp -ne $state.UseAppRegistration) -or ($useApp -and (($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId)))
         $state.ConfigWarning = $null
         $state.ClientId = $clientId
         $state.TenantId = $tenantId
@@ -677,7 +679,7 @@ function Initialize-IwaIntunePanel {
         & $hideConnection
         if (-not $changed) { return }
         # A session opened with the other app must not be reused: sign out, the next sign-in uses the new one.
-        if ($state.Account) { Disconnect-IwaIntune }
+        if ($state.Account -and $appChanged) { Disconnect-IwaIntune }
         # $saveConfig belongs to Show-IntuneWinAppUtilGUI, which dot-sources this function.
         $saveError = $null
         try { & $saveConfig } catch { $saveError = $_.Exception.Message; Write-IwaDebugLog "Saving config.json failed: $saveError" }
@@ -689,7 +691,10 @@ function Initialize-IwaIntunePanel {
     # Switch method: the app registration values stay saved; a session of the other app is signed out.
     $selectMethod = {
         param([bool]$UseApp)
-        if ($state.Busy -or $state.Waiting -or $UseApp -eq $state.UseAppRegistration) { return }
+        if ($state.Busy -or $state.Waiting) { return }
+        # Choosing a method also settles a warning about config.json (it is rewritten below).
+        if ($UseApp -eq $state.UseAppRegistration -and -not $state.ConfigWarning) { return }
+        $state.ConfigWarning = $null
         $state.UseAppRegistration = $UseApp
         if ($state.Account) { Disconnect-IwaIntune }
         $saveError = $null
@@ -725,8 +730,12 @@ function Initialize-IwaIntunePanel {
     $signInMenu = New-Object System.Windows.Controls.ContextMenu
     $menuMicrosoft = New-Object System.Windows.Controls.MenuItem
     $menuMicrosoft.Header = & $newMenuHeader 'Microsoft account' 'Recommended: Microsoft Graph Command Line Tools' $false
+    $menuMicrosoft.IsCheckable = $true
+    [System.Windows.Automation.AutomationProperties]::SetName($menuMicrosoft, 'Sign in with your Microsoft account (recommended)')
     $menuAppRegistration = New-Object System.Windows.Controls.MenuItem
     $menuAppRegistration.Header = & $newMenuHeader 'App registration' 'Your own Client ID and Tenant ID' $true
+    $menuAppRegistration.IsCheckable = $true
+    [System.Windows.Automation.AutomationProperties]::SetName($menuAppRegistration, 'Sign in with an app registration (alpha)')
     $menuAppSettings = New-Object System.Windows.Controls.MenuItem
     $menuAppSettings.Header = 'App registration settings...'
     [void]$signInMenu.Items.Add($menuMicrosoft)
@@ -748,9 +757,8 @@ function Initialize-IwaIntunePanel {
     $ui.ConnectionSave.Add_Click({ & $saveConnection })
     $ui.ConnectionCancel.Add_Click({ & $hideConnection })
     $ui.ConnectionUseMicrosoft.Add_Click({
-        $ui.ConnectionClientId.Text = ''
-        $ui.ConnectionTenantId.Text = ''
-        & $saveConnection
+        & $hideConnection
+        & $selectMethod $false
     })
 
     # --- Used by the main window ------------------------------------------------------------------
@@ -770,6 +778,14 @@ function Initialize-IwaIntunePanel {
         }
         $canonical = ConvertTo-IwaConnectionSetting -ClientId $ClientId -TenantId $TenantId
         $state.ClientId = $canonical.ClientId; $state.TenantId = $canonical.TenantId
+        # No method (configs before it existed) with a Client ID: the app registration, as before.
+        if ($Method -and $Method -notin @('Microsoft', 'AppRegistration')) {
+            Write-IwaDebugLog "Unknown IntuneSignInMethod '$Method' in config.json: using the Microsoft account."
+            $state.ConfigWarning = "The sign-in method '$Method' in config.json is not known: your Microsoft account is used. Choose the method from the arrow next to Sign in."
+            $ui.GraphStatusText.Text = $state.ConfigWarning
+            $ui.GraphStatusText.Visibility = $visible
+            $Method = 'Microsoft'
+        }
         $state.UseAppRegistration = [bool]$state.ClientId -and $Method -ne 'Microsoft'
         & $renderAccountBlock
     }

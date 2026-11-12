@@ -832,9 +832,10 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <Button Name="ConnectionUseMicrosoft" Content="Use Microsoft's app" HorizontalAlignment="Left" Width="160"
-                            ToolTip="Clear both fields and sign in with Microsoft Graph Command Line Tools"/>
+                            ToolTip="Sign in with your Microsoft account; the app registration stays saved for later"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Name="ConnectionSave" Content="Save" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
+                        <Button Name="ConnectionSave" Content="Save and use" Style="{StaticResource PrimaryButtonStyle}" Width="120" Margin="0,0,8,0"
+                                ToolTip="Save the app registration and sign in with it from now on"/>
                         <Button Name="ConnectionCancel" Content="Cancel" Width="104"/>
                     </StackPanel>
                 </Grid>
