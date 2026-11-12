@@ -134,10 +134,9 @@ Not handled yet, as the tab itself says: assignments, icon, supersedence, depend
 | **Source Folder (-c)** | ✅ Yes   | The root folder containing your setup file. |
 | **Setup File (-s)**    | ✅ Yes   | The installer (EXE or MSI, but any file works, e.g. PS1/BAT/CMD for script-based apps). If in same folder, only the filename is shown. |
 | **Output Folder (-o)** | ✅ Yes   | Where the `.intunewin` package will be created. |
-| **IntuneWinAppUtil**   | ✅ Yes\* | You can specify the path manually or let the GUI download the latest version automatically. |
+| **IntuneWinAppUtil**   | Optional | You can specify the path manually or leave it empty: the GUI uses its cached copy, or downloads the tool. |
 | **Final Filename**     | Optional | Renames the generated `.intunewin` file. Invalid characters are removed automatically. |
 
-\* The field is optional only if the tool is not yet downloaded — the GUI will handle this.
 
 ---
 
@@ -150,7 +149,7 @@ Not handled yet, as the tab itself says: assignments, icon, supersedence, depend
   ```
 
 - It stores the `ToolPath` and the last 10 output folders (`RecentOutputFolders`) so they can be reused at next launch.
-- This file is updated when the GUI closes, after each successful package and when **Clear recent** is clicked.
+- This file is updated when the GUI closes, after each successful package, when **Clear recent** is clicked, when you choose the Intune sign-in method and when you save the app registration settings.
 - Optional: `UpdateCheckEnabled` (boolean) to enable/disable the update check banner.
 - Publish to Intune: `IntuneSignInMethod` (`Microsoft` or `AppRegistration`), `IntuneClientId` and `IntuneTenantId` for the app registration. They are set from the tab; leave them out to sign in with your Microsoft account.
 
@@ -160,10 +159,10 @@ Not handled yet, as the tab itself says: assignments, icon, supersedence, depend
 
 If the path to `IntuneWinAppUtil.exe` is not provided:
 
-- The GUI will **automatically download and extract** the latest tool from:
-  [https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/releases/latest)
+- The GUI will **automatically download and extract** the tool from the `master` branch of
+  [microsoft/Microsoft-Win32-Content-Prep-Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool).
 - The tool will be stored locally under the `%APPDATA%\IntuneWinAppUtilGUI\bin` folder.
-- **Check for updates** compares the selected tool with the latest release and offers the download only when it is newer; **Force download** downloads it again in any case.
+- **Check for updates** compares the selected tool with the latest release and offers to download that release only when it is newer; **Force download** downloads it again from `master` in any case.
 
 ---
 
@@ -186,7 +185,7 @@ Show-IntuneWinAppUtilGUI -Diag
 
 - `-ShowVersion` displays installed/latest module versions in the header banner.
 - `-ForceUpdateBanner` simulates an update banner for testing.
-- `-Diag` writes startup/shutdown diagnostics such as handles, GDI handles and memory usage.
+- `-Diag` writes startup/shutdown diagnostics such as handles, GDI handles and memory usage, plus a detailed log of every packaging run in `%APPDATA%\IntuneWinAppUtilGUI\logs`.
 - Standard PowerShell `-Verbose` and `-Debug` switches are preserved when the GUI relaunches itself in STA mode.
 
 ---
