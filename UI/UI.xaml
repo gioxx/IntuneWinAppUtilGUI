@@ -782,6 +782,8 @@
                 <StackPanel Margin="0,18,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Name="DoneOpenIntune" Content="Open in Intune" Style="{StaticResource PrimaryButtonStyle}" Width="140" Margin="0,0,8,0"
                             ToolTip="Open this app in the Intune admin center to check it"/>
+                    <Button Name="DoneStartOver" Content="Start over" Width="120" Margin="0,0,8,0"
+                            ToolTip="Clear both tabs and go back to Package for the next one (you stay signed in)"/>
                     <Button Name="DoneBack" Content="Close" Width="104"/>
                 </StackPanel>
             </StackPanel>
