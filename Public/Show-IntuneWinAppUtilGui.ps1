@@ -422,6 +422,7 @@ function Show-IntuneWinAppUtilGUI {
             # Publish to Intune: custom app registration (empty = Microsoft's app)
             IntuneClientId = $state.ClientId
             IntuneTenantId = $state.TenantId
+            IntuneSignInMethod = if ($state.UseAppRegistration) { 'AppRegistration' } else { 'Microsoft' }
         }
         $cfg | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
     }
@@ -440,7 +441,7 @@ function Show-IntuneWinAppUtilGUI {
             }
             # Missing folders are kept: Run recreates the output folder when it does not exist.
             & $setRecentOutputFolders (Get-IwaRecentFolderList -Recent @($cfg.RecentOutputFolders | Where-Object { $_ -is [string] }))
-            & $iwaSetConnection ([string]$cfg.IntuneClientId) ([string]$cfg.IntuneTenantId)
+            & $iwaSetConnection ([string]$cfg.IntuneClientId) ([string]$cfg.IntuneTenantId) ([string]$cfg.IntuneSignInMethod)
         } catch {}
     }
 

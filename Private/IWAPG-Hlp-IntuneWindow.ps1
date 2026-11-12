@@ -17,7 +17,7 @@ function Get-IwaIntuneWindowControlName {
         'ScriptRulePanel', 'RuleScriptPath', 'BrowseScript', 'RuleScriptRunAs32', 'RuleScriptSignature',
         'AddRuleButton', 'RuleErrorText',
         'ValidationText', 'StatusText', 'ProgressPanel', 'ProgressText', 'UploadProgress',
-        'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'ConnectionAppText', 'ConnectionSettingsLink',
+        'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'ConnectionAppText', 'AccountAvatarText', 'MethodChip', 'AlphaBadge', 'SignInMenuButton',
         'ConnectionOverlay', 'ConnectionClientId', 'ConnectionTenantId', 'ConnectionError', 'ConnectionSave', 'ConnectionCancel', 'ConnectionUseMicrosoft',
         'DoneOverlay', 'DoneTitle', 'DoneAppName', 'DoneDetail', 'DoneNote', 'DoneOpenIntune', 'DoneBack'
     )
@@ -99,7 +99,7 @@ function Initialize-IwaIntunePanel {
     main window's scope, which stays alive while the window is open, so the handlers below keep reaching them.
     The main window uses:
       $iwaActivate      first time the tab is shown: checks the Graph module and the sign-in
-      $iwaSetConnection param($ClientId, $TenantId): the app registration read from config.json
+      $iwaSetConnection param($ClientId, $TenantId, $Method): the app registration and sign-in method from config.json
       $iwaHideConnection closes the Connection settings panel; $iwaSaveConnection saves it
       $iwaOpenPackage   param($PackagePath, $DisplayVersion, $DisplayName, $Publisher): loads a package into the form
       $iwaUploadRunning $true while an upload runs
@@ -117,7 +117,7 @@ function Initialize-IwaIntunePanel {
         Package = $null; DisplayVersion = $null; DisplayName = $null; Publisher = $null; AppId = $null; Account = $null; Activated = $false
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; LoadingIndex = -1; ClientId = ''; TenantId = ''; ConfigWarning = $null; ConfigClientId = ''; ConfigTenantId = ''; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; LoadingIndex = -1; ClientId = ''; TenantId = ''; UseAppRegistration = $false; ConfigWarning = $null; ConfigInvalid = $false; ConfigClientId = ''; ConfigTenantId = ''; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -300,22 +300,50 @@ function Initialize-IwaIntunePanel {
             & $validate
         }
     }
+    # The app registration in use: only when that method is chosen (its values stay saved otherwise).
+    $activeClientId = { if ($state.UseAppRegistration) { $state.ClientId } else { '' } }
+    $activeTenantId = { if ($state.UseAppRegistration) { $state.TenantId } else { '' } }
+    $brush = { param([string]$Hex) (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Hex) }
+    # Account block: avatar, account, method chip (blue: Microsoft, orange + ALPHA: app registration), Sign in/out.
+    $renderAccountBlock = {
+        $useApp = [bool]$state.UseAppRegistration
+        $ui.ConnectionAppText.Text = if ($useApp) { 'App registration {0}...' -f $state.ClientId.Substring(0, 8) } else { 'Microsoft account' }
+        $ui.MethodChip.Background = & $brush $(if ($useApp) { '#FFF8EE' } else { '#EEF6FF' })
+        $ui.MethodChip.BorderBrush = & $brush $(if ($useApp) { '#F5D0A0' } else { '#C5DCF6' })
+        $ui.ConnectionAppText.Foreground = & $brush $(if ($useApp) { '#7A3E00' } else { '#33536F' })
+        $ui.AlphaBadge.Visibility = if ($useApp) { $visible } else { $collapsed }
+        $ui.AccountText.Text = if ($state.Account) { [string]$state.Account } else { 'Not signed in' }
+        if ($state.Account) {
+            # Initials of the account name, or the person glyph when signed out.
+            $parts = @((([string]$state.Account -split '@')[0] -split '[._-]+') | ForEach-Object { $_ -replace '[^\p{L}\p{N}]', '' } | Where-Object { $_ })
+            $initials = if ($parts.Count -ge 2) { "$($parts[0][0])$($parts[1][0])" } elseif ($parts.Count) { $parts[0].Substring(0, [Math]::Min(2, $parts[0].Length)) } else { '?' }
+            $ui.AccountAvatarText.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI'
+            $ui.AccountAvatarText.Text = $initials.ToUpperInvariant()
+        } else {
+            $ui.AccountAvatarText.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe MDL2 Assets'
+            $ui.AccountAvatarText.Text = [string][char]0xE77B
+        }
+        $ui.SignInButton.Content = if ($state.Account) { 'Sign out' } else { 'Sign in' }
+        # Primary while signed out (the next step), plain once signed in.
+        foreach ($button in @($ui.SignInButton, $ui.SignInMenuButton)) {
+            if ($state.Account) { $button.ClearValue([System.Windows.FrameworkElement]::StyleProperty) }
+            else { $button.Style = $win.FindResource('PrimaryButtonStyle') }
+        }
+    }
     $refreshAccount = {
         $hasModule = Test-IwaGraphModule
         $ui.InstallGraphButton.Visibility = if ($hasModule) { $collapsed } else { $visible }
         $ui.SignInButton.IsEnabled = $hasModule
         $state.Account = $null
-        $ui.ConnectionAppText.Text = if ($state.ClientId) { 'App registration {0}... (alpha)' -f $state.ClientId.Substring(0, 8) } else { 'Microsoft Graph Command Line Tools' }
         if ($hasModule) {
-            try { $state.Account = Get-IwaIntuneAccount -ClientId $state.ClientId -TenantId $state.TenantId } catch { Write-IwaDebugLog "Reading the Graph context failed: $($_.Exception.Message)" }
+            try { $state.Account = Get-IwaIntuneAccount -ClientId (& $activeClientId) -TenantId (& $activeTenantId) } catch { Write-IwaDebugLog "Reading the Graph context failed: $($_.Exception.Message)" }
             $ui.GraphStatusText.Text = $state.ConfigWarning
             $ui.GraphStatusText.Visibility = if ($state.ConfigWarning) { $visible } else { $collapsed }
         } else {
             $ui.GraphStatusText.Text = 'Publishing needs the Microsoft.Graph.Authentication module. Select Install now, or run: Install-Module Microsoft.Graph.Authentication -Scope CurrentUser'
             $ui.GraphStatusText.Visibility = $visible
         }
-        $ui.AccountText.Text = if ($state.Account) { [string]$state.Account } else { 'Not signed in' }
-        $ui.SignInButton.Content = if ($state.Account) { 'Sign out' } else { 'Sign in' }
+        & $renderAccountBlock
         $ui.SearchButton.IsEnabled = [bool]$state.Account
         & $validate
     }
@@ -447,11 +475,11 @@ function Initialize-IwaIntunePanel {
         $ui.GraphStatusText.Text = 'Signing in... complete the sign-in in the window that opens.'
         $ui.GraphStatusText.Visibility = $visible
         $state.SignInError = $null
-        & $withWait { try { Connect-IwaIntune -ClientId $state.ClientId -TenantId $state.TenantId | Out-Null } catch { $state.SignInError = $_.Exception.Message } }
+        & $withWait { try { Connect-IwaIntune -ClientId (& $activeClientId) -TenantId (& $activeTenantId) | Out-Null } catch { $state.SignInError = $_.Exception.Message } }
         & $refreshAccount
         if ($state.SignInError) {
             Write-IwaDebugLog "Intune sign-in failed: $($state.SignInError)"
-            $ui.GraphStatusText.Text = Get-IwaSignInErrorMessage -Message $state.SignInError -CustomApp:([bool]$state.ClientId)
+            $ui.GraphStatusText.Text = Get-IwaSignInErrorMessage -Message $state.SignInError -CustomApp:([bool]$state.UseAppRegistration)
             $ui.GraphStatusText.Visibility = $visible
         }
     })
@@ -623,8 +651,9 @@ function Initialize-IwaIntunePanel {
     $showConnection = {
         if ($state.Busy -or $state.Waiting) { return }
         # After an invalid config.json, show what it holds, so the user sees what to fix.
-        $ui.ConnectionClientId.Text = if ($state.ConfigWarning) { $state.ConfigClientId } else { $state.ClientId }
-        $ui.ConnectionTenantId.Text = if ($state.ConfigWarning) { $state.ConfigTenantId } else { $state.TenantId }
+        # Only invalid values are not in $state; any other warning (e.g. an unknown method) keeps the saved ones.
+        $ui.ConnectionClientId.Text = if ($state.ConfigInvalid) { $state.ConfigClientId } else { $state.ClientId }
+        $ui.ConnectionTenantId.Text = if ($state.ConfigInvalid) { $state.ConfigTenantId } else { $state.TenantId }
         $ui.ConnectionError.Visibility = $collapsed
         $ui.ConnectionOverlay.Visibility = $visible
         $null = $ui.ConnectionClientId.Focus()
@@ -641,40 +670,110 @@ function Initialize-IwaIntunePanel {
         $clientId = $canonical.ClientId
         $tenantId = $canonical.TenantId
         # Saving over an invalid config.json is a change even when the values in use (none) stay the same.
-        $changed = ($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId) -or [bool]$state.ConfigWarning
+        $useApp = [bool]$clientId
+        $changed = ($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId) -or ($useApp -ne $state.UseAppRegistration) -or [bool]$state.ConfigWarning
+        $appChanged = ($useApp -ne $state.UseAppRegistration) -or ($useApp -and (($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId)))
         $state.ConfigWarning = $null
+        $state.ConfigInvalid = $false
         $state.ClientId = $clientId
         $state.TenantId = $tenantId
+        $state.UseAppRegistration = $useApp
         & $hideConnection
         if (-not $changed) { return }
         # A session opened with the other app must not be reused: sign out, the next sign-in uses the new one.
-        if ($state.Account) { Disconnect-IwaIntune }
+        if ($state.Account -and $appChanged) { Disconnect-IwaIntune }
         # $saveConfig belongs to Show-IntuneWinAppUtilGUI, which dot-sources this function.
         $saveError = $null
         try { & $saveConfig } catch { $saveError = $_.Exception.Message; Write-IwaDebugLog "Saving config.json failed: $saveError" }
-        if ($state.Activated) { & $refreshAccount } else { $ui.GraphStatusText.Visibility = $collapsed }
-        $who = if ($clientId) { 'your app registration' } else { 'Microsoft''s app' }
+        if ($state.Activated) { & $refreshAccount } else { $ui.GraphStatusText.Visibility = $collapsed; & $renderAccountBlock }
+        $who = if ($useApp) { 'your app registration' } else { 'Microsoft''s app' }
         if ($saveError) { & $showStatus 'error' "The next sign-in uses $who, but the setting could not be saved for the next start: $saveError" }
         else { & $showStatus 'success' "Connection settings saved: sign in to use $who." }
     }
-    $ui.ConnectionSettingsLink.Add_Click({ & $showConnection })
+    # Switch method: the app registration values stay saved; a session of the other app is signed out.
+    $selectMethod = {
+        param([bool]$UseApp)
+        if ($state.Busy -or $state.Waiting) { return }
+        # Choosing a method also settles a warning about config.json (it is rewritten below).
+        if ($UseApp -eq $state.UseAppRegistration -and -not $state.ConfigWarning) { return }
+        $state.ConfigWarning = $null
+        $state.ConfigInvalid = $false
+        $state.UseAppRegistration = $UseApp
+        if ($state.Account) { Disconnect-IwaIntune }
+        $saveError = $null
+        try { & $saveConfig } catch { $saveError = $_.Exception.Message; Write-IwaDebugLog "Saving config.json failed: $saveError" }
+        & $refreshAccount
+        $who = if ($UseApp) { 'your app registration (alpha)' } else { 'your Microsoft account' }
+        if ($saveError) { & $showStatus 'error' "The next sign-in uses $who, but the choice could not be saved for the next start: $saveError" }
+        else { & $showStatus 'success' "Sign in to continue with $who." }
+    }
+    $newMenuHeader = {
+        param([string]$Title, [string]$Detail, [bool]$Alpha)
+        $panel = New-Object System.Windows.Controls.StackPanel
+        $titleRow = New-Object System.Windows.Controls.StackPanel
+        $titleRow.Orientation = 'Horizontal'
+        $titleText = New-Object System.Windows.Controls.TextBlock
+        $titleText.Text = $Title; $titleText.FontWeight = 'SemiBold'
+        [void]$titleRow.Children.Add($titleText)
+        if ($Alpha) {
+            $badge = New-Object System.Windows.Controls.Border
+            $badge.Margin = '6,0,0,0'; $badge.Padding = '6,0'; $badge.CornerRadius = 8; $badge.BorderThickness = 1
+            $badge.Background = & $brush '#FFF4E5'; $badge.BorderBrush = & $brush '#F5B060'
+            $badgeText = New-Object System.Windows.Controls.TextBlock
+            $badgeText.Text = 'ALPHA'; $badgeText.FontSize = 10; $badgeText.FontWeight = 'Bold'; $badgeText.Foreground = & $brush '#9A4A00'
+            $badge.Child = $badgeText
+            [void]$titleRow.Children.Add($badge)
+        }
+        [void]$panel.Children.Add($titleRow)
+        $detailText = New-Object System.Windows.Controls.TextBlock
+        $detailText.Text = $Detail; $detailText.FontSize = 11; $detailText.Foreground = & $brush '#667085'
+        [void]$panel.Children.Add($detailText)
+        $panel
+    }
+    $signInMenu = New-Object System.Windows.Controls.ContextMenu
+    $menuMicrosoft = New-Object System.Windows.Controls.MenuItem
+    $menuMicrosoft.Header = & $newMenuHeader 'Microsoft account' 'Recommended: Microsoft Graph Command Line Tools' $false
+    $menuMicrosoft.IsCheckable = $true
+    [System.Windows.Automation.AutomationProperties]::SetName($menuMicrosoft, 'Sign in with your Microsoft account (recommended)')
+    $menuAppRegistration = New-Object System.Windows.Controls.MenuItem
+    $menuAppRegistration.Header = & $newMenuHeader 'App registration' 'Your own Client ID and Tenant ID' $true
+    $menuAppRegistration.IsCheckable = $true
+    [System.Windows.Automation.AutomationProperties]::SetName($menuAppRegistration, 'Sign in with an app registration (alpha)')
+    $menuAppSettings = New-Object System.Windows.Controls.MenuItem
+    $menuAppSettings.Header = 'App registration settings...'
+    [void]$signInMenu.Items.Add($menuMicrosoft)
+    [void]$signInMenu.Items.Add($menuAppRegistration)
+    [void]$signInMenu.Items.Add((New-Object System.Windows.Controls.Separator))
+    [void]$signInMenu.Items.Add($menuAppSettings)
+    $menuMicrosoft.Add_Click({ & $selectMethod $false })
+    # Without saved values there is nothing to switch to yet: the settings panel asks for them.
+    $menuAppRegistration.Add_Click({ if ($state.ClientId) { & $selectMethod $true } else { & $showConnection } })
+    $menuAppSettings.Add_Click({ & $showConnection })
+    $ui.SignInMenuButton.Add_Click({
+        if ($state.Busy -or $state.Waiting) { return }
+        $menuMicrosoft.IsChecked = -not $state.UseAppRegistration
+        $menuAppRegistration.IsChecked = [bool]$state.UseAppRegistration
+        $signInMenu.PlacementTarget = $ui.SignInMenuButton
+        $signInMenu.Placement = [System.Windows.Controls.Primitives.PlacementMode]::Bottom
+        $signInMenu.IsOpen = $true
+    })
     $ui.ConnectionSave.Add_Click({ & $saveConnection })
     $ui.ConnectionCancel.Add_Click({ & $hideConnection })
     $ui.ConnectionUseMicrosoft.Add_Click({
-        $ui.ConnectionClientId.Text = ''
-        $ui.ConnectionTenantId.Text = ''
-        & $saveConnection
+        & $hideConnection
+        & $selectMethod $false
     })
 
     # --- Used by the main window ------------------------------------------------------------------
     # The Graph module check and the sign-in state wait for the tab: packaging never needs them.
     # From config.json, before the tab is first shown.
     $iwaSetConnection = {
-        param([string]$ClientId, [string]$TenantId)
+        param([string]$ClientId, [string]$TenantId, [string]$Method)
         $problem = Test-IwaConnectionSetting -ClientId $ClientId -TenantId $TenantId
         if ($problem) {
             # Hand-edited config.json: say so on the tab instead of dropping the values without a word.
             Write-IwaDebugLog "Ignoring the app registration in config.json: $problem"
+            $state.ConfigInvalid = $true
             $state.ConfigClientId = "$ClientId"; $state.ConfigTenantId = "$TenantId"
             $state.ConfigWarning = "The app registration in config.json was ignored: $problem Open Connection settings to fix it; until then Microsoft's app is used."
             $ui.GraphStatusText.Text = $state.ConfigWarning
@@ -683,7 +782,16 @@ function Initialize-IwaIntunePanel {
         }
         $canonical = ConvertTo-IwaConnectionSetting -ClientId $ClientId -TenantId $TenantId
         $state.ClientId = $canonical.ClientId; $state.TenantId = $canonical.TenantId
-        $ui.ConnectionAppText.Text = if ($state.ClientId) { 'App registration {0}... (alpha)' -f $state.ClientId.Substring(0, 8) } else { 'Microsoft Graph Command Line Tools' }
+        # No method (configs before it existed) with a Client ID: the app registration, as before.
+        if ($Method -and $Method -notin @('Microsoft', 'AppRegistration')) {
+            Write-IwaDebugLog "Unknown IntuneSignInMethod '$Method' in config.json: using the Microsoft account."
+            $state.ConfigWarning = "The sign-in method '$Method' in config.json is not known: your Microsoft account is used. Choose the method from the arrow next to Sign in."
+            $ui.GraphStatusText.Text = $state.ConfigWarning
+            $ui.GraphStatusText.Visibility = $visible
+            $Method = 'Microsoft'
+        }
+        $state.UseAppRegistration = [bool]$state.ClientId -and $Method -ne 'Microsoft'
+        & $renderAccountBlock
     }
     $iwaActivate = {
         if ($state.Activated) { return }
@@ -727,7 +835,7 @@ function Initialize-IwaIntunePanel {
     $iwaSaveConnection = $saveConnection
 
     # --- Start -------------------------------------------------------------------------------
-    $ui.ConnectionAppText.Text = 'Microsoft Graph Command Line Tools'
+    & $renderAccountBlock
     & $applyMode
     & $loadPackage ''
 }

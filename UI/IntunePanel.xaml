@@ -26,19 +26,36 @@
                             <RadioButton Name="ModeNew" Content="New app" GroupName="Mode" IsChecked="True" Margin="0,0,18,0" VerticalContentAlignment="Center"/>
                             <RadioButton Name="ModeUpdate" Content="Update existing" GroupName="Mode" VerticalContentAlignment="Center"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Name="AccountText" Text="Not signed in" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <Button Name="InstallGraphButton" Content="Install now" Width="104" Margin="0,0,8,0" Visibility="Collapsed"/>
-                            <Button Name="SignInButton" Content="Sign in" Width="104"/>
-                        </StackPanel>
+                        <!-- Account block: who is signed in, with which app, and Sign in / Sign out.
+                             The arrow opens the sign-in method menu (built in IWAPG-Hlp-IntuneWindow.ps1). -->
+                        <Border Grid.Column="1" CornerRadius="10" Padding="6" VerticalAlignment="Center"
+                                Background="{StaticResource SoftPanelBrush}" BorderBrush="#DCE3EC" BorderThickness="1">
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="30" Height="30" CornerRadius="15" Background="#DCE7F7" VerticalAlignment="Center">
+                                    <TextBlock Name="AccountAvatarText" Text="&#xE77B;" FontFamily="Segoe MDL2 Assets" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#24387A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Name="AccountText" Text="Not signed in" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                        <Border Name="MethodChip" CornerRadius="9" Padding="7,1" BorderThickness="1" Background="#EEF6FF" BorderBrush="#C5DCF6">
+                                            <TextBlock Name="ConnectionAppText" Text="Microsoft account" FontSize="11" FontWeight="SemiBold" Foreground="#33536F"/>
+                                        </Border>
+                                        <Border Name="AlphaBadge" Margin="6,0,0,0" CornerRadius="9" Padding="7,1" BorderThickness="1"
+                                                Background="#FFF4E5" BorderBrush="#F5B060" Visibility="Collapsed" AutomationProperties.Name="Alpha feature">
+                                            <TextBlock Text="ALPHA" FontSize="10" FontWeight="Bold" Foreground="#9A4A00"/>
+                                        </Border>
+                                    </StackPanel>
+                                </StackPanel>
+                                <Button Name="InstallGraphButton" Content="Install now" Width="104" Margin="14,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
+                                <Button Name="SignInButton" Content="Sign in" Width="88" MinHeight="34" Margin="14,0,0,0" Style="{StaticResource PrimaryButtonStyle}" VerticalAlignment="Center"/>
+                                <Button Name="SignInMenuButton" Width="30" MinHeight="34" Margin="2,0,0,0" Padding="0" Style="{StaticResource PrimaryButtonStyle}" VerticalAlignment="Center"
+                                        AutomationProperties.Name="Sign-in options" ToolTip="Sign-in method and app registration settings">
+                                    <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                                </Button>
+                            </StackPanel>
+                        </Border>
                     </Grid>
-                    <!-- Which app signs in, and where to change it (#30) -->
-                    <TextBlock HorizontalAlignment="Right" Margin="0,6,0,0" FontSize="11" Foreground="{StaticResource MutedBrush}">
-                        <Run Text="Signs in with"/>
-                        <Run Name="ConnectionAppText" Text="Microsoft Graph Command Line Tools"/>
-                        <Run Text="-"/>
-                        <Hyperlink Name="ConnectionSettingsLink" ToolTip="Use your own app registration (Client ID and Tenant ID)">Connection settings</Hyperlink>
-                    </TextBlock>
                     <TextBlock Name="GraphStatusText" Style="{StaticResource HelpTextStyle}" MaxWidth="720" Visibility="Collapsed"/>
                 </StackPanel>
             </Border>
