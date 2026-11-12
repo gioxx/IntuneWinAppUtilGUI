@@ -697,6 +697,7 @@ function Initialize-IwaIntunePanel {
         # Choosing a method also settles a warning about config.json (it is rewritten below).
         if ($UseApp -eq $state.UseAppRegistration -and -not $state.ConfigWarning) { return }
         $state.ConfigWarning = $null
+        $state.ConfigInvalid = $false
         $state.UseAppRegistration = $UseApp
         if ($state.Account) { Disconnect-IwaIntune }
         $saveError = $null
