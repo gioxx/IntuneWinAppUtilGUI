@@ -46,9 +46,11 @@ function Read-IwaIntuneWinPackage {
             Path            = $Path
             Name            = [string]$info.Name
             SetupFile       = [string]$info.SetupFile
-            # Name of the encrypted content inside the package: Intune expects it for both
-            # win32LobApp.fileName and the content file, whatever the outer .intunewin is called.
-            FileName        = if ([string]$info.FileName) { [string]$info.FileName } else { $content.Name }
+            # The .intunewin name chosen when packaging: Intune shows it as the app's package file. It is used for
+            # both win32LobApp.fileName and the content file, so the two always match (maintainer's choice; Microsoft's
+            # Graph sample sends EmbeddedFileName, which every package names IntunePackage.intunewin).
+            FileName        = [System.IO.Path]::GetFileName($Path)
+            EmbeddedFileName = if ([string]$info.FileName) { [string]$info.FileName } else { $content.Name }
             ContentEntry    = $content.FullName
             UnencryptedSize = [int64]$info.UnencryptedContentSize
             EncryptedSize   = [int64]$content.Length
