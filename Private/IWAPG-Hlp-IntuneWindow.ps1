@@ -117,7 +117,7 @@ function Initialize-IwaIntunePanel {
         Package = $null; DisplayVersion = $null; DisplayName = $null; Publisher = $null; AppId = $null; Account = $null; Activated = $false
         Rules = New-Object System.Collections.ArrayList
         SearchResults = @(); LoadedApp = $null; Task = $null
-        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; LoadingIndex = -1; ClientId = ''; TenantId = ''; UseAppRegistration = $false; ConfigWarning = $null; ConfigClientId = ''; ConfigTenantId = ''; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
+        ArchitectureProperty = ''; ArchitectureCheck = $true; KeepIntuneRules = $false; Waiting = $false; LoadingIndex = -1; ClientId = ''; TenantId = ''; UseAppRegistration = $false; ConfigWarning = $null; ConfigInvalid = $false; ConfigClientId = ''; ConfigTenantId = ''; ExtraArchitectures = @(); Busy = $false; Loading = $false; LoadingResults = $false; KeepAppId = $false; LastUpload = $false
         InstallError = $null; SignInError = $null; SearchError = $null; LoadError = $null
     }
     $errorBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC0, 0x39, 0x2B))
@@ -651,8 +651,9 @@ function Initialize-IwaIntunePanel {
     $showConnection = {
         if ($state.Busy -or $state.Waiting) { return }
         # After an invalid config.json, show what it holds, so the user sees what to fix.
-        $ui.ConnectionClientId.Text = if ($state.ConfigWarning) { $state.ConfigClientId } else { $state.ClientId }
-        $ui.ConnectionTenantId.Text = if ($state.ConfigWarning) { $state.ConfigTenantId } else { $state.TenantId }
+        # Only invalid values are not in $state; any other warning (e.g. an unknown method) keeps the saved ones.
+        $ui.ConnectionClientId.Text = if ($state.ConfigInvalid) { $state.ConfigClientId } else { $state.ClientId }
+        $ui.ConnectionTenantId.Text = if ($state.ConfigInvalid) { $state.ConfigTenantId } else { $state.TenantId }
         $ui.ConnectionError.Visibility = $collapsed
         $ui.ConnectionOverlay.Visibility = $visible
         $null = $ui.ConnectionClientId.Focus()
@@ -673,6 +674,7 @@ function Initialize-IwaIntunePanel {
         $changed = ($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId) -or ($useApp -ne $state.UseAppRegistration) -or [bool]$state.ConfigWarning
         $appChanged = ($useApp -ne $state.UseAppRegistration) -or ($useApp -and (($clientId -ne $state.ClientId) -or ($tenantId -ne $state.TenantId)))
         $state.ConfigWarning = $null
+        $state.ConfigInvalid = $false
         $state.ClientId = $clientId
         $state.TenantId = $tenantId
         $state.UseAppRegistration = $useApp
@@ -770,6 +772,7 @@ function Initialize-IwaIntunePanel {
         if ($problem) {
             # Hand-edited config.json: say so on the tab instead of dropping the values without a word.
             Write-IwaDebugLog "Ignoring the app registration in config.json: $problem"
+            $state.ConfigInvalid = $true
             $state.ConfigClientId = "$ClientId"; $state.ConfigTenantId = "$TenantId"
             $state.ConfigWarning = "The app registration in config.json was ignored: $problem Open Connection settings to fix it; until then Microsoft's app is used."
             $ui.GraphStatusText.Text = $state.ConfigWarning
