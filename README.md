@@ -112,7 +112,8 @@ To detect the file regardless of its version, leave the call without `-MinimumVe
 - **New app** creates a Win32 app. Name, version, commands and the MSI detection rule are prefilled from the package.
 - **Update existing** searches an app by name, loads its settings and lets you change them, and optionally uploads the new package. With a new package, the settings and the new content are applied together after the upload is committed; if anything fails, the app in Intune is left as it was.
 - Detection rules: MSI product code, file or folder, registry, PowerShell script. Requirement rules set in the portal are kept as they are.
-- **Open in Intune** opens the app in the Intune admin center.
+- **Open in Intune** opens the app in the Intune admin center; **Start over** clears both tabs for the next app. **Clear** works on both tabs and empties both (you stay signed in).
+- Intune shows the package with the `.intunewin` name chosen when packaging.
 
 Sign-in: the account block at the top of the tab shows who is signed in and with which app. **Sign in** uses your Microsoft account (through Microsoft's *Microsoft Graph Command Line Tools* app). The arrow next to it can switch to an **app registration** of your own (Client ID and Tenant ID): this is an **alpha** feature. The app registration needs the delegated permission `DeviceManagementApps.ReadWrite.All` with admin consent, *Allow public client flows* set to Yes, and the redirect URIs `ms-appx-web://Microsoft.AAD.BrokerPlugin/<Client ID>` and `http://localhost` under *Mobile and desktop applications*.
 
