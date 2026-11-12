@@ -828,6 +828,12 @@ function Initialize-IwaIntunePanel {
         $state.SearchResults = @()
         $ui.SearchBox.Text = ''
         $ui.RuleErrorText.Visibility = $collapsed
+        # The rule being typed belongs to the previous app too.
+        foreach ($name in @('RuleProductCode', 'RuleFilePath', 'RuleFileName', 'RuleFileValue', 'RuleKeyPath', 'RuleValueName', 'RuleRegValue', 'RuleScriptPath')) { $ui[$name].Text = '' }
+        foreach ($name in @('RuleFile32Bit', 'RuleReg32Bit', 'RuleScriptRunAs32', 'RuleScriptSignature')) { $ui[$name].IsChecked = $false }
+        $ui.RuleFileOperation.SelectedIndex = 0
+        $ui.RuleRegOperation.SelectedIndex = 0
+        $ui.NewRuleType.SelectedIndex = 0
         & $loadPackage ''
         if ($ui.ModeNew.IsChecked) { & $setForm (& $emptySpec) }
         else { $state.KeepAppId = $false; $ui.ModeNew.IsChecked = $true }

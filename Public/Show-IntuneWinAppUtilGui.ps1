@@ -1029,7 +1029,10 @@ function Show-IntuneWinAppUtilGUI {
     # Clear button: reset all except ToolPath if loaded from config
     # Clear, on either tab: both tabs start over (the Intune sign-in stays). Not while an upload runs.
     $clearAll = {
-        if (-not (& $iwaClear)) { return $false }
+        if (-not (& $iwaClear)) {
+            & $showDialog -Kind Info -Title 'Clear' -Message 'Publish to Intune is still working: wait until it finishes, then select Clear again.'
+            return $false
+        }
         $SourceFolder.Clear()
         $SetupFile.Clear()
         $OutputFolder.Text = ''
