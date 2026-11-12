@@ -17,7 +17,7 @@ function Get-IwaIntuneWindowControlName {
         'ScriptRulePanel', 'RuleScriptPath', 'BrowseScript', 'RuleScriptRunAs32', 'RuleScriptSignature',
         'AddRuleButton', 'RuleErrorText',
         'ValidationText', 'StatusText', 'ProgressPanel', 'ProgressText', 'UploadProgress',
-        'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'ConnectionAppText', 'AccountAvatarText', 'MethodChip', 'AlphaBadge', 'SignInMenuButton',
+        'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'IntuneClearButton', 'DoneStartOver', 'ConnectionAppText', 'AccountAvatarText', 'MethodChip', 'AlphaBadge', 'SignInMenuButton',
         'ConnectionOverlay', 'ConnectionClientId', 'ConnectionTenantId', 'ConnectionError', 'ConnectionSave', 'ConnectionCancel', 'ConnectionUseMicrosoft',
         'DoneOverlay', 'DoneTitle', 'DoneAppName', 'DoneDetail', 'DoneNote', 'DoneOpenIntune', 'DoneBack'
     )
@@ -104,6 +104,7 @@ function Initialize-IwaIntunePanel {
       $iwaOpenPackage   param($PackagePath, $DisplayVersion, $DisplayName, $Publisher): loads a package into the form
       $iwaUploadRunning $true while an upload runs
       $iwaStopUpload    stops a running upload without waiting for it
+      $iwaClear         empties the tab for a new app (not while an upload runs; returns $false then)
       $iwaReleaseFinishedUpload  frees an upload that ended but was not collected yet
     #>
     param($IwaWindow, [string]$ModuleRoot)
@@ -813,6 +814,26 @@ function Initialize-IwaIntunePanel {
             $ui.ModeNew.IsChecked = $true
         }
         & $loadPackage $PackagePath
+    }
+    # Clear: a new, empty app. The sign-in and the connection settings stay.
+    $iwaClear = {
+        if ($state.Busy -or $state.Waiting) { return $false }
+        $ui.DoneOverlay.Visibility = $collapsed
+        $state.DisplayVersion = $null; $state.DisplayName = $null; $state.Publisher = $null
+        $state.AppId = $null
+        $ui.OpenInIntune.IsEnabled = $false
+        $state.LoadingResults = $true
+        $ui.SearchResults.Items.Clear()
+        $state.LoadingResults = $false
+        $state.SearchResults = @()
+        $ui.SearchBox.Text = ''
+        $ui.RuleErrorText.Visibility = $collapsed
+        & $loadPackage ''
+        if ($ui.ModeNew.IsChecked) { & $setForm (& $emptySpec) }
+        else { $state.KeepAppId = $false; $ui.ModeNew.IsChecked = $true }
+        $ui.UploadContent.IsChecked = $true
+        & $hideStatus
+        $true
     }
     $iwaUploadRunning = { [bool]($state.Task -and -not $state.Task.Handle.IsCompleted) }
     # On close: an upload that ended after the last timer tick still holds its runspace.

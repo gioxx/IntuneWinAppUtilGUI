@@ -1027,12 +1027,19 @@ function Show-IntuneWinAppUtilGUI {
     })
 
     # Clear button: reset all except ToolPath if loaded from config
-    $ClearButton.Add_Click({
+    # Clear, on either tab: both tabs start over (the Intune sign-in stays). Not while an upload runs.
+    $clearAll = {
+        if (-not (& $iwaClear)) { return $false }
         $SourceFolder.Clear()
         $SetupFile.Clear()
         $OutputFolder.Text = ''
         $FinalFilename.Clear()
-    })
+        $true
+    }
+    $ClearButton.Add_Click({ $null = & $clearAll })
+    $ui.IntuneClearButton.Add_Click({ $null = & $clearAll })
+    # "Start over" after a publish: both tabs cleared, back to Package for the next one.
+    $ui.DoneStartOver.Add_Click({ if (& $clearAll) { $TabPackage.IsChecked = $true } })
 
     # Help overlay: command-line switches and keyboard shortcuts (content in UI.xaml)
     $HelpOverlay = $window.FindName("HelpOverlay")
