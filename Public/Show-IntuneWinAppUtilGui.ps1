@@ -1054,10 +1054,9 @@ function Show-IntuneWinAppUtilGUI {
     })
     $HelpClose.Add_Click({ & $hideHelp })
 
-    # Exit button: close the window
-    $ExitButton.Add_Click({
-        $window.Close()
-    })
+    # Exit, on either tab: close the window (Closing asks first if an upload is running)
+    $ExitButton.Add_Click({ $window.Close() })
+    $ui.IntuneExitButton.Add_Click({ $window.Close() })
 
     # Keyboard shortcuts: Esc to exit (with confirmation), Enter to run packaging
     $window.Add_KeyDown({
