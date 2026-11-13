@@ -173,7 +173,7 @@ If the path to `IntuneWinAppUtil.exe` is not provided:
 - Press **ENTER** to run the packaging when you are ready (Package tab).
 - Press **Ctrl+Tab** to switch between the Package and Publish to Intune tabs.
 - A small tooltip message at the bottom of the GUI provides quick usage hints.
-- Clear and Exit buttons are provided to reset inputs or close the app manually.
+- Clear and Exit buttons, on both tabs, reset inputs or close the app manually.
 
 ### Optional launch switches
 
