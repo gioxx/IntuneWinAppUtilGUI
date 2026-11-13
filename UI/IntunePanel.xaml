@@ -265,6 +265,7 @@
                             <Button Name="UploadButton" Content="Upload" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="False"/>
                             <Button Name="IntuneClearButton" Content="Clear" Width="104" Margin="8,0,0,0"
                                     ToolTip="Clear both tabs to start over (you stay signed in)"/>
+                            <Button Name="IntuneExitButton" Content="Exit (ESC)" Style="{StaticResource DangerButtonStyle}" Width="104" Margin="8,0,0,0"/>
                         </StackPanel>
                     </Grid>
                 </StackPanel>

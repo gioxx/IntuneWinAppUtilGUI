@@ -17,7 +17,7 @@ function Get-IwaIntuneWindowControlName {
         'ScriptRulePanel', 'RuleScriptPath', 'BrowseScript', 'RuleScriptRunAs32', 'RuleScriptSignature',
         'AddRuleButton', 'RuleErrorText',
         'ValidationText', 'StatusText', 'ProgressPanel', 'ProgressText', 'UploadProgress',
-        'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'IntuneClearButton', 'DoneStartOver', 'ConnectionAppText', 'AccountAvatarText', 'MethodChip', 'AlphaBadge', 'SignInMenuButton',
+        'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'IntuneClearButton', 'IntuneExitButton', 'DoneStartOver', 'ConnectionAppText', 'AccountAvatarText', 'MethodChip', 'AlphaBadge', 'SignInMenuButton',
         'ConnectionOverlay', 'ConnectionClientId', 'ConnectionTenantId', 'ConnectionError', 'ConnectionSave', 'ConnectionCancel', 'ConnectionUseMicrosoft',
         'DoneOverlay', 'DoneTitle', 'DoneAppName', 'DoneDetail', 'DoneNote', 'DoneOpenIntune', 'DoneBack'
     )
