@@ -110,7 +110,7 @@ After packaging, **Upload to Intune...** in the result panel opens the *Publish 
 
 - **New app** creates a Win32 app. Name, version, commands and the MSI detection rule are prefilled from the package.
 - **Update existing** searches an app by name, loads its settings and lets you change them, and optionally uploads the new package. With a new package, the settings and the new content are applied together after the upload is committed; if anything fails, the app in Intune is left as it was.
-- Detection rules: MSI product code, file or folder, registry, PowerShell script. Requirement rules set in the portal are kept as they are.
+- Detection rules: MSI product code, file or folder, registry, PowerShell script, with the same comparison operators as the portal. Select a rule to load it into the editor, change it and **Update rule**. Requirement rules set in the portal are kept as they are.
 - **Open in Intune** opens the app in the Intune admin center.
 
 Requirements:
