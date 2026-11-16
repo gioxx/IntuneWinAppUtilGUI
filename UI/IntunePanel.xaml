@@ -167,7 +167,7 @@
                         <Border Margin="0,8,0,0" Padding="10" CornerRadius="6"
                                 Background="{StaticResource SoftPanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
                             <StackPanel>
-                                <Label Content="New rule" Target="{Binding ElementName=NewRuleType}"/>
+                                <Label Content="Rule type" Target="{Binding ElementName=NewRuleType}"/>
                                 <ComboBox Name="NewRuleType" Width="220" HorizontalAlignment="Left" Margin="0,4,0,8" MinHeight="31" VerticalContentAlignment="Center">
                                     <ComboBoxItem Content="MSI product code" Tag="MsiProductCode" IsSelected="True"/>
                                     <ComboBoxItem Content="File or folder" Tag="File"/>
@@ -193,10 +193,18 @@
                                         </Grid.ColumnDefinitions>
                                         <ComboBox Name="RuleFileOperation" MinHeight="31" VerticalContentAlignment="Center">
                                             <ComboBoxItem Content="Exists" Tag="exists" IsSelected="True"/>
-                                            <ComboBoxItem Content="Version is at least" Tag="version"/>
+                                            <ComboBoxItem Content="Version" Tag="version"/>
                                         </ComboBox>
-                                        <TextBox Name="RuleFileValue" Grid.Column="2" Visibility="Hidden" ToolTip="Version to compare, for example 1.2.3.4"/>
+                                        <ComboBox Name="RuleFileOperator" Grid.Column="2" MinHeight="31" VerticalContentAlignment="Center" Visibility="Hidden">
+                                            <ComboBoxItem Content="Equal to" Tag="equal"/>
+                                            <ComboBoxItem Content="Not equal to" Tag="notEqual"/>
+                                            <ComboBoxItem Content="Greater than" Tag="greaterThan"/>
+                                            <ComboBoxItem Content="Greater than or equal to" Tag="greaterThanOrEqual" IsSelected="True"/>
+                                            <ComboBoxItem Content="Less than" Tag="lessThan"/>
+                                            <ComboBoxItem Content="Less than or equal to" Tag="lessThanOrEqual"/>
+                                        </ComboBox>
                                     </Grid>
+                                    <TextBox Name="RuleFileValue" Margin="0,8,0,0" Visibility="Collapsed" ToolTip="Version to compare, for example 1.2.3.4"/>
                                     <CheckBox Name="RuleFile32Bit" Content="Associated with a 32-bit app on 64-bit clients" Margin="0,8,0,0"/>
                                 </StackPanel>
 
@@ -213,11 +221,19 @@
                                         </Grid.ColumnDefinitions>
                                         <ComboBox Name="RuleRegOperation" MinHeight="31" VerticalContentAlignment="Center">
                                             <ComboBoxItem Content="Exists" Tag="exists" IsSelected="True"/>
-                                            <ComboBoxItem Content="String equals" Tag="string"/>
-                                            <ComboBoxItem Content="Version is at least" Tag="version"/>
+                                            <ComboBoxItem Content="String" Tag="string"/>
+                                            <ComboBoxItem Content="Version" Tag="version"/>
                                         </ComboBox>
-                                        <TextBox Name="RuleRegValue" Grid.Column="2" Visibility="Hidden" ToolTip="Value to compare"/>
+                                        <ComboBox Name="RuleRegOperator" Grid.Column="2" MinHeight="31" VerticalContentAlignment="Center" Visibility="Hidden">
+                                            <ComboBoxItem Content="Equal to" Tag="equal"/>
+                                            <ComboBoxItem Content="Not equal to" Tag="notEqual"/>
+                                            <ComboBoxItem Content="Greater than" Tag="greaterThan"/>
+                                            <ComboBoxItem Content="Greater than or equal to" Tag="greaterThanOrEqual" IsSelected="True"/>
+                                            <ComboBoxItem Content="Less than" Tag="lessThan"/>
+                                            <ComboBoxItem Content="Less than or equal to" Tag="lessThanOrEqual"/>
+                                        </ComboBox>
                                     </Grid>
+                                    <TextBox Name="RuleRegValue" Margin="0,8,0,0" Visibility="Collapsed" ToolTip="Value to compare"/>
                                     <CheckBox Name="RuleReg32Bit" Content="Associated with a 32-bit app on 64-bit clients" Margin="0,8,0,0"/>
                                 </StackPanel>
 
@@ -228,7 +244,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBox Name="RuleScriptPath"/>
+                                        <TextBox Name="RuleScriptPath" ToolTip="When updating a script rule, leave empty to keep its current script"/>
                                         <Button Name="BrowseScript" Grid.Column="1" Content="Browse" Width="104" Margin="8,0,0,0"/>
                                     </Grid>
                                     <CheckBox Name="RuleScriptRunAs32" Content="Run script as 32-bit process on 64-bit clients" Margin="0,8,0,0"/>
@@ -236,7 +252,11 @@
                                 </StackPanel>
 
                                 <TextBlock Name="RuleErrorText" TextWrapping="Wrap" FontSize="12" Foreground="#9F2424" Margin="0,8,0,0" Visibility="Collapsed"/>
-                                <Button Name="AddRuleButton" Content="Add rule" Width="104" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Name="AddRuleButton" Content="Add rule" Width="104"/>
+                                    <Button Name="UpdateRuleButton" Content="Update rule" Width="104" Margin="8,0,0,0" IsEnabled="False"
+                                            ToolTip="Replace the rule selected in the list with the one above"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>
