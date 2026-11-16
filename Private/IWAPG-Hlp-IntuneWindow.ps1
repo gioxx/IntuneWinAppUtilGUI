@@ -12,10 +12,10 @@ function Get-IwaIntuneWindowControlName {
         'InstallCommandLine', 'UninstallCommandLine', 'RunAsAccount', 'DeviceRestartBehavior', 'MaxRunTimeInMinutes',
         'ArchX64', 'ArchX86', 'ArchArm64', 'ArchKeptText', 'MinimumWindowsRelease',
         'RulesList', 'RemoveRuleButton', 'NewRuleType', 'MsiRulePanel', 'RuleProductCode',
-        'FileRulePanel', 'RuleFilePath', 'RuleFileName', 'RuleFileOperation', 'RuleFileValue', 'RuleFile32Bit',
-        'RegistryRulePanel', 'RuleKeyPath', 'RuleValueName', 'RuleRegOperation', 'RuleRegValue', 'RuleReg32Bit',
+        'FileRulePanel', 'RuleFilePath', 'RuleFileName', 'RuleFileOperation', 'RuleFileOperator', 'RuleFileValue', 'RuleFile32Bit',
+        'RegistryRulePanel', 'RuleKeyPath', 'RuleValueName', 'RuleRegOperation', 'RuleRegOperator', 'RuleRegValue', 'RuleReg32Bit',
         'ScriptRulePanel', 'RuleScriptPath', 'BrowseScript', 'RuleScriptRunAs32', 'RuleScriptSignature',
-        'AddRuleButton', 'RuleErrorText',
+        'AddRuleButton', 'UpdateRuleButton', 'RuleErrorText',
         'ValidationText', 'StatusText', 'ProgressPanel', 'ProgressText', 'UploadProgress',
         'OpenInIntune', 'RetryUploadButton', 'UploadButton', 'IntuneClearButton', 'IntuneExitButton', 'DoneStartOver', 'ConnectionAppText', 'AccountAvatarText', 'MethodChip', 'AlphaBadge', 'SignInMenuButton',
         'ConnectionOverlay', 'ConnectionClientId', 'ConnectionTenantId', 'ConnectionError', 'ConnectionSave', 'ConnectionCancel', 'ConnectionUseMicrosoft',
@@ -565,54 +565,120 @@ function Initialize-IwaIntunePanel {
         $ui.ScriptRulePanel.Visibility = if ($type -eq 'Script') { $visible } else { $collapsed }
         $ui.RuleErrorText.Visibility = $collapsed
     })
-    # "Exists" compares nothing, so the value box only shows for the other operations.
+    $selectTag = {
+        param($Combo, [string]$Tag)
+        foreach ($item in $Combo.Items) { if ([string]$item.Tag -eq $Tag) { $Combo.SelectedItem = $item; return } }
+    }
+    # "Exists" compares nothing, so the operator and value only show for the other operations.
     $ui.RuleFileOperation.Add_SelectionChanged({
-        $ui.RuleFileValue.Visibility = if ([string]$ui.RuleFileOperation.SelectedItem.Tag -eq 'exists') { [System.Windows.Visibility]::Hidden } else { $visible }
+        $exists = [string]$ui.RuleFileOperation.SelectedItem.Tag -eq 'exists'
+        $ui.RuleFileOperator.Visibility = if ($exists) { [System.Windows.Visibility]::Hidden } else { $visible }
+        $ui.RuleFileValue.Visibility = if ($exists) { $collapsed } else { $visible }
     })
     $ui.RuleRegOperation.Add_SelectionChanged({
-        $ui.RuleRegValue.Visibility = if ([string]$ui.RuleRegOperation.SelectedItem.Tag -eq 'exists') { [System.Windows.Visibility]::Hidden } else { $visible }
+        $operation = [string]$ui.RuleRegOperation.SelectedItem.Tag
+        $ui.RuleRegOperator.Visibility = if ($operation -eq 'exists') { [System.Windows.Visibility]::Hidden } else { $visible }
+        $ui.RuleRegValue.Visibility = if ($operation -eq 'exists') { $collapsed } else { $visible }
+        # A string can only be equal or not equal to the value.
+        foreach ($item in $ui.RuleRegOperator.Items) {
+            $item.Visibility = if ($operation -eq 'string' -and [string]$item.Tag -notin 'equal', 'notEqual') { $collapsed } else { $visible }
+        }
+        & $selectTag $ui.RuleRegOperator $(if ($operation -eq 'string') { 'equal' } else { 'greaterThanOrEqual' })
     })
     $ui.BrowseScript.Add_Click({
         $dialog = New-Object Microsoft.Win32.OpenFileDialog
         $dialog.Filter = 'PowerShell script (*.ps1)|*.ps1'
         if ($dialog.ShowDialog($win)) { $ui.RuleScriptPath.Text = $dialog.FileName }
     })
-    $ui.AddRuleButton.Add_Click({
+    # Builds a rule from the editor; $Current is the rule being updated, whose script is kept when no file is selected.
+    $readRule = {
+        param($Current)
         $type = [string]$ui.NewRuleType.SelectedItem.Tag
         $ruleArgs = @{ Type = $type }
-        try {
-            switch ($type) {
-                'MsiProductCode' { $ruleArgs.ProductCode = $ui.RuleProductCode.Text.Trim() }
-                'File' {
-                    $ruleArgs.Path = $ui.RuleFilePath.Text
-                    $ruleArgs.FileOrFolderName = $ui.RuleFileName.Text
-                    $ruleArgs.Operation = [string]$ui.RuleFileOperation.SelectedItem.Tag
-                    $ruleArgs.Value = $ui.RuleFileValue.Text
-                    $ruleArgs.Check32BitOn64System = [bool]$ui.RuleFile32Bit.IsChecked
-                }
-                'Registry' {
-                    $ruleArgs.KeyPath = $ui.RuleKeyPath.Text
-                    $ruleArgs.ValueName = $ui.RuleValueName.Text
-                    $ruleArgs.Operation = [string]$ui.RuleRegOperation.SelectedItem.Tag
-                    $ruleArgs.Value = $ui.RuleRegValue.Text
-                    $ruleArgs.Check32BitOn64System = [bool]$ui.RuleReg32Bit.IsChecked
-                }
-                'Script' {
-                    $scriptPath = $ui.RuleScriptPath.Text.Trim()
+        switch ($type) {
+            'MsiProductCode' { $ruleArgs.ProductCode = $ui.RuleProductCode.Text.Trim() }
+            'File' {
+                $ruleArgs.Path = $ui.RuleFilePath.Text
+                $ruleArgs.FileOrFolderName = $ui.RuleFileName.Text
+                $ruleArgs.Operation = [string]$ui.RuleFileOperation.SelectedItem.Tag
+                $ruleArgs.Operator = [string]$ui.RuleFileOperator.SelectedItem.Tag
+                $ruleArgs.Value = $ui.RuleFileValue.Text
+                $ruleArgs.Check32BitOn64System = [bool]$ui.RuleFile32Bit.IsChecked
+            }
+            'Registry' {
+                $ruleArgs.KeyPath = $ui.RuleKeyPath.Text
+                $ruleArgs.ValueName = $ui.RuleValueName.Text
+                $ruleArgs.Operation = [string]$ui.RuleRegOperation.SelectedItem.Tag
+                $ruleArgs.Operator = [string]$ui.RuleRegOperator.SelectedItem.Tag
+                $ruleArgs.Value = $ui.RuleRegValue.Text
+                $ruleArgs.Check32BitOn64System = [bool]$ui.RuleReg32Bit.IsChecked
+            }
+            'Script' {
+                $scriptPath = $ui.RuleScriptPath.Text.Trim()
+                if (-not $scriptPath -and $Current -and $Current.Type -eq 'Script') {
+                    $ruleArgs.ScriptContent = $Current.ScriptContent
+                } else {
                     if (-not $scriptPath -or -not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { throw 'Select an existing .ps1 detection script.' }
                     $ruleArgs.ScriptContent = Read-IwaScriptFile -Path $scriptPath
-                    $ruleArgs.RunAs32Bit = [bool]$ui.RuleScriptRunAs32.IsChecked
-                    $ruleArgs.EnforceSignatureCheck = [bool]$ui.RuleScriptSignature.IsChecked
                 }
+                $ruleArgs.RunAs32Bit = [bool]$ui.RuleScriptRunAs32.IsChecked
+                $ruleArgs.EnforceSignatureCheck = [bool]$ui.RuleScriptSignature.IsChecked
             }
-            [void]$state.Rules.Add((New-IwaDetectionRule @ruleArgs))
+        }
+        New-IwaDetectionRule @ruleArgs
+    }
+    # -1 adds a new rule; any other index replaces that rule and keeps it selected.
+    $saveRule = {
+        param([int]$Index)
+        try {
+            $current = if ($Index -ge 0) { $state.Rules[$Index] } else { $null }
+            $rule = & $readRule $current
+            if ($Index -ge 0) { $state.Rules[$Index] = $rule } else { [void]$state.Rules.Add($rule) }
             $state.KeepIntuneRules = $false
             $ui.RuleErrorText.Visibility = $collapsed
             & $refreshRules
+            if ($Index -ge 0) { $ui.RulesList.SelectedIndex = $Index }
         } catch {
             $ui.RuleErrorText.Text = $_.Exception.Message
             $ui.RuleErrorText.Visibility = $visible
         }
+    }
+    $ui.AddRuleButton.Add_Click({ & $saveRule -1 })
+    $ui.UpdateRuleButton.Add_Click({ & $saveRule $ui.RulesList.SelectedIndex })
+    # Selecting a rule loads it into the editor, so it can be changed and updated in place.
+    $ui.RulesList.Add_SelectionChanged({
+        $index = $ui.RulesList.SelectedIndex
+        $rule = if ($index -ge 0 -and $index -lt $state.Rules.Count) { $state.Rules[$index] } else { $null }
+        $editable = $rule -and (Test-IwaRuleEditable -Rule $rule)
+        $ui.UpdateRuleButton.IsEnabled = [bool]$editable
+        if (-not $editable) { return }
+        & $selectTag $ui.NewRuleType ([string]$rule.Type)
+        switch ([string]$rule.Type) {
+            'MsiProductCode' { $ui.RuleProductCode.Text = [string]$rule.ProductCode }
+            'File' {
+                $ui.RuleFilePath.Text = [string]$rule.Path
+                $ui.RuleFileName.Text = [string]$rule.FileOrFolderName
+                & $selectTag $ui.RuleFileOperation ([string]$rule.Operation)
+                if ($rule.Operation -ne 'exists') { & $selectTag $ui.RuleFileOperator ([string]$rule.Operator) }
+                $ui.RuleFileValue.Text = [string]$rule.Value
+                $ui.RuleFile32Bit.IsChecked = [bool]$rule.Check32BitOn64System
+            }
+            'Registry' {
+                $ui.RuleKeyPath.Text = [string]$rule.KeyPath
+                $ui.RuleValueName.Text = [string]$rule.ValueName
+                & $selectTag $ui.RuleRegOperation ([string]$rule.Operation)
+                if ($rule.Operation -ne 'exists') { & $selectTag $ui.RuleRegOperator ([string]$rule.Operator) }
+                $ui.RuleRegValue.Text = [string]$rule.Value
+                $ui.RuleReg32Bit.IsChecked = [bool]$rule.Check32BitOn64System
+            }
+            'Script' {
+                # The file it came from is unknown: an empty path keeps the current script.
+                $ui.RuleScriptPath.Text = ''
+                $ui.RuleScriptRunAs32.IsChecked = [bool]$rule.RunAs32Bit
+                $ui.RuleScriptSignature.IsChecked = [bool]$rule.EnforceSignatureCheck
+            }
+        }
+        $ui.RuleErrorText.Visibility = $collapsed
     })
     $ui.RemoveRuleButton.Add_Click({
         $index = $ui.RulesList.SelectedIndex
@@ -833,6 +899,8 @@ function Initialize-IwaIntunePanel {
         foreach ($name in @('RuleFile32Bit', 'RuleReg32Bit', 'RuleScriptRunAs32', 'RuleScriptSignature')) { $ui[$name].IsChecked = $false }
         $ui.RuleFileOperation.SelectedIndex = 0
         $ui.RuleRegOperation.SelectedIndex = 0
+        & $selectTag $ui.RuleFileOperator 'greaterThanOrEqual'
+        & $selectTag $ui.RuleRegOperator 'greaterThanOrEqual'
         $ui.NewRuleType.SelectedIndex = 0
         & $loadPackage ''
         if ($ui.ModeNew.IsChecked) { & $setForm (& $emptySpec) }

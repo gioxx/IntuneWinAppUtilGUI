@@ -111,6 +111,47 @@ Describe 'New-IwaDetectionRule' {
     It 'needs script content' {
         { New-IwaDetectionRule -Type Script -ScriptContent '' } | Should -Throw '*script*'
     }
+    It 'keeps the chosen version operator: <_>' -ForEach @('equal', 'notEqual', 'greaterThan', 'greaterThanOrEqual', 'lessThan', 'lessThanOrEqual') {
+        $r = New-IwaDetectionRule -Type File -Path 'C:\Program Files\Contoso' -FileOrFolderName 'tool.exe' -Operation version -Operator $_ -Value '1.2.3.4'
+        $r.Operator | Should -Be $_
+        (ConvertTo-IwaGraphRule -Rule $r).operator | Should -Be $_
+    }
+    It 'defaults a version comparison to greaterThanOrEqual' {
+        (New-IwaDetectionRule -Type File -Path 'C:\X' -FileOrFolderName 'a.exe' -Operation version -Value '1.0').Operator | Should -Be 'greaterThanOrEqual'
+    }
+    It 'ignores the operator for an exists check' {
+        (New-IwaDetectionRule -Type File -Path 'C:\X' -FileOrFolderName 'a.exe' -Operator lessThan).Operator | Should -Be 'notConfigured'
+    }
+    It 'accepts notEqual for a registry string' {
+        (New-IwaDetectionRule -Type Registry -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Contoso' -ValueName 'Channel' -Operation string -Operator notEqual -Value 'beta').Operator | Should -Be 'notEqual'
+    }
+    It 'rejects an ordering operator for a registry string' {
+        { New-IwaDetectionRule -Type Registry -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Contoso' -ValueName 'Channel' -Operation string -Operator greaterThan -Value 'beta' } | Should -Throw '*equal*'
+    }
+}
+
+Describe 'Test-IwaRuleEditable' {
+    It 'is true for rules the editor can build' {
+        Test-IwaRuleEditable -Rule @{ Type = 'MsiProductCode'; ProductCode = '{11111111-2222-3333-4444-555555555555}' } | Should -BeTrue
+        Test-IwaRuleEditable -Rule (New-IwaDetectionRule -Type File -Path 'C:\X' -FileOrFolderName 'a.exe') | Should -BeTrue
+        Test-IwaRuleEditable -Rule (New-IwaDetectionRule -Type File -Path 'C:\X' -FileOrFolderName 'a.exe' -Operation version -Operator lessThan -Value '2.0') | Should -BeTrue
+        Test-IwaRuleEditable -Rule (New-IwaDetectionRule -Type Registry -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Contoso' -ValueName 'Channel' -Operation string -Operator notEqual -Value 'beta') | Should -BeTrue
+        Test-IwaRuleEditable -Rule (New-IwaDetectionRule -Type Script -ScriptContent 'Write-Output ok') | Should -BeTrue
+    }
+    It 'is false for kept rules and operations the editor does not offer' {
+        Test-IwaRuleEditable -Rule @{ Type = 'Raw'; Graph = [pscustomobject]@{ ruleType = 'requirement' } } | Should -BeFalse
+        Test-IwaRuleEditable -Rule @{ Type = 'File'; Path = 'C:\X'; FileOrFolderName = 'a.exe'; Operation = 'sizeInMB'; Operator = 'greaterThan'; Value = '10' } | Should -BeFalse
+        Test-IwaRuleEditable -Rule @{ Type = 'File'; Path = 'C:\X'; FileOrFolderName = 'a.exe'; Operation = 'doesNotExist'; Operator = 'notConfigured' } | Should -BeFalse
+        Test-IwaRuleEditable -Rule @{ Type = 'Registry'; KeyPath = 'HKEY_LOCAL_MACHINE\SOFTWARE\Contoso'; ValueName = 'Build'; Operation = 'integer'; Operator = 'equal'; Value = '5' } | Should -BeFalse
+        Test-IwaRuleEditable -Rule @{ Type = 'Registry'; KeyPath = 'HKEY_LOCAL_MACHINE\SOFTWARE\Contoso'; ValueName = 'Channel'; Operation = 'string'; Operator = 'greaterThan'; Value = 'b' } | Should -BeFalse
+    }
+    It 'is true for a file version rule read back from Intune' {
+        $graph = [pscustomobject]@{
+            '@odata.type' = '#microsoft.graph.win32LobAppFileSystemRule'; ruleType = 'detection'; path = 'C:\Program Files\Contoso'; fileOrFolderName = 'app.exe'
+            operationType = 'version'; operator = 'equal'; comparisonValue = '3.0.0.0'; check32BitOn64System = $false
+        }
+        Test-IwaRuleEditable -Rule (ConvertFrom-IwaGraphRule -GraphRule $graph) | Should -BeTrue
+    }
 }
 
 Describe 'ConvertTo-IwaGraphRule' {
@@ -346,7 +387,8 @@ Describe 'Get-IwaRuleSummary' {
     It 'describes each rule type' {
         Get-IwaRuleSummary -Rule @{ Type = 'MsiProductCode'; ProductCode = '{11111111-2222-3333-4444-555555555555}' } | Should -Be 'MSI product code {11111111-2222-3333-4444-555555555555}'
         Get-IwaRuleSummary -Rule (New-IwaDetectionRule -Type File -Path 'C:\Program Files\Contoso\' -FileOrFolderName 'tool.exe') | Should -Be 'File: C:\Program Files\Contoso\tool.exe: exists'
-        Get-IwaRuleSummary -Rule (New-IwaDetectionRule -Type Registry -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Contoso' -ValueName 'Version' -Operation version -Value '2.0') | Should -Be 'Registry: HKEY_LOCAL_MACHINE\SOFTWARE\Contoso [Version]: version greaterThanOrEqual 2.0'
+        Get-IwaRuleSummary -Rule (New-IwaDetectionRule -Type Registry -KeyPath 'HKEY_LOCAL_MACHINE\SOFTWARE\Contoso' -ValueName 'Version' -Operation version -Value '2.0') | Should -Be 'Registry: HKEY_LOCAL_MACHINE\SOFTWARE\Contoso [Version]: version greater than or equal to 2.0'
+        Get-IwaRuleSummary -Rule (New-IwaDetectionRule -Type File -Path 'C:\X' -FileOrFolderName 'a.exe' -Operation version -Operator lessThan -Value '2.0') | Should -Be 'File: C:\X\a.exe: version less than 2.0'
         Get-IwaRuleSummary -Rule @{ Type = 'Raw'; Graph = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobAppRegistryRule'; ruleType = 'requirement' } } | Should -Be 'Kept from Intune: win32LobAppRegistryRule (requirement)'
     }
 }

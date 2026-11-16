@@ -93,6 +93,8 @@ function New-IwaDetectionRule {
         [string]$KeyPath,
         [string]$ValueName,
         [ValidateSet('exists', 'string', 'version')][string]$Operation = 'exists',
+        # Empty = the default for the operation: equal for a string, greaterThanOrEqual for a version.
+        [ValidateSet('', 'equal', 'notEqual', 'greaterThan', 'greaterThanOrEqual', 'lessThan', 'lessThanOrEqual')][string]$Operator,
         [string]$Value,
         [switch]$Check32BitOn64System,
         [string]$ScriptContent,
@@ -100,9 +102,11 @@ function New-IwaDetectionRule {
         [switch]$EnforceSignatureCheck
     )
 
-    $operator = switch ($Operation) { 'exists' { 'notConfigured' } 'string' { 'equal' } 'version' { 'greaterThanOrEqual' } }
+    $graphOperator = switch ($Operation) { 'exists' { 'notConfigured' } 'string' { 'equal' } 'version' { 'greaterThanOrEqual' } }
     $compare = $null
     if ($Operation -ne 'exists') {
+        if ($Operator) { $graphOperator = $Operator }
+        if ($Operation -eq 'string' -and $graphOperator -notin 'equal', 'notEqual') { throw 'A string can only be equal or not equal to the value.' }
         if ([string]::IsNullOrWhiteSpace($Value)) { throw 'Enter the value to compare.' }
         $compare = $Value.Trim()
     }
@@ -115,12 +119,12 @@ function New-IwaDetectionRule {
         'File' {
             if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($FileOrFolderName)) { throw 'Enter the folder path and the file or folder name.' }
             if ($Operation -eq 'string') { throw 'File rules can check "exists" or "version".' }
-            @{ Type = 'File'; Path = $Path.Trim(); FileOrFolderName = $FileOrFolderName.Trim(); Operation = $Operation; Operator = $operator; Value = $compare; Check32BitOn64System = [bool]$Check32BitOn64System }
+            @{ Type = 'File'; Path = $Path.Trim(); FileOrFolderName = $FileOrFolderName.Trim(); Operation = $Operation; Operator = $graphOperator; Value = $compare; Check32BitOn64System = [bool]$Check32BitOn64System }
         }
         'Registry' {
             if ([string]::IsNullOrWhiteSpace($KeyPath)) { throw 'Enter the registry key path.' }
             if ($Operation -ne 'exists' -and [string]::IsNullOrWhiteSpace($ValueName)) { throw 'Enter the value name to compare.' }
-            @{ Type = 'Registry'; KeyPath = $KeyPath.Trim(); ValueName = ([string]$ValueName).Trim(); Operation = $Operation; Operator = $operator; Value = $compare; Check32BitOn64System = [bool]$Check32BitOn64System }
+            @{ Type = 'Registry'; KeyPath = $KeyPath.Trim(); ValueName = ([string]$ValueName).Trim(); Operation = $Operation; Operator = $graphOperator; Value = $compare; Check32BitOn64System = [bool]$Check32BitOn64System }
         }
         'Script' {
             if ([string]::IsNullOrWhiteSpace($ScriptContent)) { throw 'Select a detection script.' }
@@ -369,6 +373,34 @@ function Test-IwaWin32AppSpec {
     $errors.ToArray()
 }
 
+# Same wording as the rule editor and the Intune portal.
+$script:IwaOperatorText = @{
+    equal = 'equal to'; notEqual = 'not equal to'; greaterThan = 'greater than'
+    greaterThanOrEqual = 'greater than or equal to'; lessThan = 'less than'; lessThanOrEqual = 'less than or equal to'
+}
+
+function Test-IwaRuleEditable {
+    <#
+    .SYNOPSIS
+    True when the rule editor can show the rule and build it again; other rules can only be removed.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Rule)
+
+    $operation = [string]$Rule.Operation
+    $operator = [string]$Rule.Operator
+    switch ([string]$Rule.Type) {
+        'MsiProductCode' { return $true }
+        'Script' { return $true }
+        'File' { return ($operation -eq 'exists') -or ($operation -eq 'version' -and $script:IwaOperatorText.ContainsKey($operator)) }
+        'Registry' {
+            if ($operation -eq 'string') { return $operator -in 'equal', 'notEqual' }
+            return ($operation -eq 'exists') -or ($operation -eq 'version' -and $script:IwaOperatorText.ContainsKey($operator))
+        }
+    }
+    $false
+}
+
 function Get-IwaRuleSummary {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Rule)
@@ -376,7 +408,8 @@ function Get-IwaRuleSummary {
     $check = if ($Rule.Operation -eq 'exists' -or -not $Rule.Operator -or $Rule.Operator -eq 'notConfigured') {
         [string]$Rule.Operation
     } else {
-        '{0} {1} {2}' -f $Rule.Operation, $Rule.Operator, $Rule.Value
+        $operatorText = if ($script:IwaOperatorText.ContainsKey([string]$Rule.Operator)) { $script:IwaOperatorText[[string]$Rule.Operator] } else { [string]$Rule.Operator }
+        '{0} {1} {2}' -f $Rule.Operation, $operatorText, $Rule.Value
     }
     switch ([string]$Rule.Type) {
         'MsiProductCode' { "MSI product code $($Rule.ProductCode)" }
