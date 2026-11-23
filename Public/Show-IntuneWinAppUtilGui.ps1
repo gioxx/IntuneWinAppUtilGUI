@@ -112,6 +112,12 @@ function Show-IntuneWinAppUtilGUI {
     
     $RunButton       = $window.FindName("RunButton")
 
+    # Registered before the fields' other handlers, so they see the path already unquoted.
+    foreach ($pathFieldName in @('SourceFolder', 'SetupFile', 'OutputFolder', 'ToolPathBox', 'RuleFilePath', 'RuleScriptPath')) {
+        $pathField = $window.FindName($pathFieldName)
+        if ($pathField) { Register-IwaPathQuoteStrip -Control $pathField }
+    }
+
     $ProgressOverlay = $window.FindName("ProgressOverlay")
     $ProgressStep    = $window.FindName("ProgressStep")
     $ProgressBar     = $window.FindName("ProgressBar")

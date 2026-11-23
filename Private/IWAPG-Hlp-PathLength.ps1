@@ -86,3 +86,46 @@ function Update-PathLengthIndicator {
         $Indicator.Visibility = [System.Windows.Visibility]::Collapsed
     }
 }
+
+function Remove-IwaPathQuote {
+    <#
+    .SYNOPSIS
+    Strips the double quotes around a pasted path.
+    .DESCRIPTION
+    Explorer's "Copy as path" wraps paths in double quotes, which the folder scan and Test-Path cannot use.
+    Returns the text unchanged unless, once trimmed, it starts and ends with a double quote.
+    .PARAMETER Text
+    The field text.
+    #>
+
+    [CmdletBinding()]
+    param([Parameter()][AllowEmptyString()][AllowNull()][string] $Text)
+
+    $trimmed = "$Text".Trim()
+    if ($trimmed.Length -ge 2 -and $trimmed.StartsWith('"') -and $trimmed.EndsWith('"')) {
+        return $trimmed.Substring(1, $trimmed.Length - 2).Trim()
+    }
+    $Text
+}
+
+function Register-IwaPathQuoteStrip {
+    <#
+    .SYNOPSIS
+    Makes a path field drop the double quotes around a pasted path as soon as it is pasted.
+    .PARAMETER Control
+    The TextBox, or editable ComboBox, holding the path.
+    #>
+
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][System.Windows.Controls.Control] $Control)
+
+    # TextChanged bubbles up from an editable ComboBox's inner text box, so one handler covers both.
+    $Control.AddHandler([System.Windows.Controls.Primitives.TextBoxBase]::TextChangedEvent, [System.Windows.Controls.TextChangedEventHandler]{
+        param($evtSender, $e)
+        $clean = Remove-IwaPathQuote $evtSender.Text
+        if ($clean -cne $evtSender.Text) {
+            $evtSender.Text = $clean
+            if ($evtSender -is [System.Windows.Controls.TextBox]) { $evtSender.CaretIndex = $clean.Length }
+        }
+    })
+}
