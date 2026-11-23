@@ -26,7 +26,7 @@
 - Added: Check for updates of IntuneWinAppUtil.exe, against the version list kept in this repository; Version history links to the KB.
 - Changed: Help, the update check, the tool download and the exit confirmation are in-window panels instead of message boxes.
 - Changed: header tabs and a new header color; Ctrl+Tab switches tab, Enter packages only on the Package tab.
-- Fixed: updating an app keeps the version of the package being uploaded, keeps "no architecture check" and keeps rules Intune returns without content; a failed create no longer leads to a second app; uploads retry only temporary errors.
+- Fixed: updating an app keeps the version of the package being uploaded, keeps "no architecture check" and keeps rules Intune returns without content; a failed create no longer leads to a second app; uploads retry only temporary errors. A path pasted with quotes (Explorer's Copy as path) has them removed, so the setup file is found in the source folder again.
 '@
         }
     }
