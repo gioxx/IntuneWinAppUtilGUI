@@ -21,3 +21,22 @@ Describe 'Get-MaxFilePathInfo' {
         $script:calls | Should -Be 2   # 401 files, one call every 200
     }
 }
+
+Describe 'Remove-IwaPathQuote' {
+    BeforeAll {
+        Add-Type -AssemblyName PresentationFramework
+        . (Join-Path $PSScriptRoot '..\Private\IWAPG-Hlp-PathLength.ps1')
+    }
+
+    It 'strips the quotes Explorer "Copy as path" adds' {
+        Remove-IwaPathQuote '"C:\Source\App 1"' | Should -Be 'C:\Source\App 1'
+        Remove-IwaPathQuote '  "C:\Source\setup.exe" ' | Should -Be 'C:\Source\setup.exe'
+    }
+
+    It 'leaves unquoted or half-typed text alone' {
+        Remove-IwaPathQuote 'C:\Source ' | Should -Be 'C:\Source '
+        Remove-IwaPathQuote '"' | Should -Be '"'
+        Remove-IwaPathQuote '"C:\Source' | Should -Be '"C:\Source'
+        Remove-IwaPathQuote '' | Should -Be ''
+    }
+}
